@@ -1,3 +1,5 @@
+const aragonExtension = require('../aragon/extension')
+
 const apis = [
   'alarms',
   'bookmarks',
@@ -44,6 +46,12 @@ function Extension () {
     try {
       if (browser[api]) {
         _this[api] = browser[api]
+      }
+    } catch (e) {}
+
+    try {
+      if (aragonExtension[api]) {
+        _this[api] = aragonExtension[api]
       }
     } catch (e) {}
     try {
