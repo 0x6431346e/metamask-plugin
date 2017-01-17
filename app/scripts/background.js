@@ -9,6 +9,8 @@ const setupMultiplex = require('./lib/stream-utils.js').setupMultiplex
 const MetamaskController = require('./metamask-controller')
 const extension = require('./lib/extension')
 
+const WindowMessageDuplexStream = require('./aragon/window-stream')
+
 const STORAGE_KEY = 'metamask-config'
 var popupIsOpen = false
 
@@ -52,6 +54,13 @@ function connectRemote (remotePort) {
     setupUntrustedCommunication(portStream, originDomain)
   }
 }
+
+var pluginStream = new WindowMessageDuplexStream({
+  name: 'background',
+  target: 'page',
+  targetWindow: window.top,
+})
+setupUntrustedCommunication(pluginStream, '*')
 
 function setupUntrustedCommunication (connectionStream, originDomain) {
   // setup multiplexing

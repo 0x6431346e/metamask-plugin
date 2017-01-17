@@ -1,4 +1,5 @@
 const LocalMessageDuplexStream = require('post-message-stream')
+const WindowMessageDuplexStream = require('./aragon/window-stream')
 const PongStream = require('ping-pong-stream/pong')
 const PortStream = require('./lib/port-stream.js')
 const ObjectMultiplex = require('./lib/obj-multiplex')
@@ -45,12 +46,20 @@ function setupStreams(){
     target: 'inpage',
   })
   pageStream.on('error', console.error)
-  var pluginPort = extension.runtime.connect({name: 'contentscript'})
-  var pluginStream = new PortStream(pluginPort)
-  pluginStream.on('error', console.error)
+  /* var pluginPort = extension.runtime.connect({name: 'contentscript'})
+  var pluginStream = new PortStream(pluginPort) */
+  global._setupMetaMaskPageStream = (iframe) => {
+    var pluginStream = new WindowMessageDuplexStream({
+      name: 'page',
+      target: 'background',
+      targetWindow: iframe.contentWindow,
+    })
 
-  // forward communication plugin->inpage
-  pageStream.pipe(pluginStream).pipe(pageStream)
+    pluginStream.on('error', console.error)
+
+    // forward communication plugin->inpage
+    pageStream.pipe(pluginStream).pipe(pageStream)
+  }
 
   // setup local multistream channels
   var mx = ObjectMultiplex()

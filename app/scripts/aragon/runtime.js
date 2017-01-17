@@ -1,10 +1,9 @@
 if (!global._runtime) global._runtime = {}
 
-// TODO: This currently works for one client and one server. Shall we support multiple?
 class Port {
-  constructor({ name }, peer) {
+  constructor({ name }, peers = []) {
     this.name = name
-    this.peer = peer
+    this.peers = peers
 
     this.listeners = {
       message: []
@@ -29,7 +28,7 @@ class Port {
   }
 
   postMessage(msg) {
-    this.peer._write(msg)
+    for (const peer of this.peers) peer._write(msg)
   }
 
   _write(data) {
@@ -39,7 +38,7 @@ class Port {
 
 module.exports = {
   connect: ({ name }) => {
-    const client = new Port({ name }, global._runtime.server)
+    const client = new Port({ name }, [global._runtime.server])
     global._runtime.onConnect(client)
     return global._runtime.server
   },
@@ -47,7 +46,7 @@ module.exports = {
     addListener: (cb) => {
       global._runtime.server = new Port({ name: 'server' })
       global._runtime.onConnect = (client) => {
-        global._runtime.server.peer = client
+        global._runtime.server.peers.push(client)
         cb(client)
       }
     }
