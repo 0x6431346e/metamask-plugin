@@ -37,6 +37,14 @@ function startApp (metamaskState, accountManager, opts) {
     store.dispatch(actions.showConfTxPage())
   }
 
+  if ('GULP_ARAGON') {
+    window.addEventListener('message', (msg) => {
+      if (msg.data.aragon && msg.data.aragon === 'showConfTxPage') {
+        store.dispatch(actions.showConfTxPage())
+      }
+    }, false)
+  }
+
   accountManager.on('update', function (metamaskState) {
     store.dispatch(actions.updateMetamaskState(metamaskState))
   })

@@ -28,8 +28,9 @@ const idStore = controller.idStore
 function triggerUi () {
   if (!popupIsOpen) {
     notification.show()
-  } else {
-
+  } else if ('GULP_ARAGON') {
+    top.postMessage({metaMask: 'show'}, '*')
+    window.postMessage({aragon: 'showConfTxPage'}, '*')
   }
 }
 // On first install, open a window to MetaMask website to how-it-works.
