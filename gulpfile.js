@@ -27,6 +27,7 @@ var tosHash = hash.digest('hex')
 
 var disableLiveReload = gutil.env.disableLiveReload
 var debug = gutil.env.debug
+var aragon = gutil.env.aragon
 
 // browser reload
 
@@ -246,6 +247,7 @@ function bundleTask(opts) {
       .pipe(brfs())
       .pipe(replace('GULP_TOS_HASH', tosHash))
       .pipe(replace('\'GULP_METAMASK_DEBUG\'', debug))
+      .pipe(replace('\'GULP_ARAGON\'', aragon))
       // optional, remove if you don't need to buffer file contents
       .pipe(buffer())
       // optional, remove if you dont want sourcemaps

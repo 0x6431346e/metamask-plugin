@@ -26,7 +26,11 @@ const controller = new MetamaskController({
 const idStore = controller.idStore
 
 function triggerUi () {
-  if (!popupIsOpen) notification.show()
+  if (!popupIsOpen) {
+    notification.show()
+  } else {
+
+  }
 }
 // On first install, open a window to MetaMask website to how-it-works.
 
@@ -55,12 +59,14 @@ function connectRemote (remotePort) {
   }
 }
 
-var pluginStream = new WindowMessageDuplexStream({
-  name: 'background',
-  target: 'page',
-  targetWindow: window.top,
-})
-setupUntrustedCommunication(pluginStream, '*')
+if ('GULP_ARAGON') {
+  var pluginStream = new WindowMessageDuplexStream({
+    name: 'background',
+    target: 'page',
+    targetWindow: window.top,
+  })
+  setupUntrustedCommunication(pluginStream, '*')
+}
 
 function setupUntrustedCommunication (connectionStream, originDomain) {
   // setup multiplexing

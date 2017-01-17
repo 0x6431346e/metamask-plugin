@@ -3,6 +3,7 @@ const TESTNET_RPC_URL = 'https://ropsten.infura.io/metamask'
 const DEFAULT_RPC_URL = TESTNET_RPC_URL
 
 global.METAMASK_DEBUG = 'GULP_METAMASK_DEBUG'
+global.ARAGON = 'GULP_ARAGON'
 global.TOS_HASH = 'GULP_TOS_HASH'
 
 module.exports = {

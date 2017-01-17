@@ -46,19 +46,22 @@ function setupStreams(){
     target: 'inpage',
   })
   pageStream.on('error', console.error)
-  /* var pluginPort = extension.runtime.connect({name: 'contentscript'})
-  var pluginStream = new PortStream(pluginPort) */
-  global._setupMetaMaskPageStream = (iframe) => {
-    var pluginStream = new WindowMessageDuplexStream({
-      name: 'page',
-      target: 'background',
-      targetWindow: iframe.contentWindow,
-    })
+  if (!'GULP_ARAGON') {
+    var pluginPort = extension.runtime.connect({name: 'contentscript'})
+    var pluginStream = new PortStream(pluginPort)
+  } else {
+    global._setupMetaMaskPageStream = (iframe) => {
+      var pluginStream = new WindowMessageDuplexStream({
+        name: 'page',
+        target: 'background',
+        targetWindow: iframe.contentWindow,
+      })
 
-    pluginStream.on('error', console.error)
+      pluginStream.on('error', console.error)
 
-    // forward communication plugin->inpage
-    pageStream.pipe(pluginStream).pipe(pageStream)
+      // forward communication plugin->inpage
+      pageStream.pipe(pluginStream).pipe(pageStream)
+    }
   }
 
   // setup local multistream channels
