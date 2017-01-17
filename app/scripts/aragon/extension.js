@@ -5,10 +5,7 @@ const noop = () => null
 module.exports = {
   runtime,
   extension: {
-    getURL: (path) => (
-      // `${window.location.origin}/${path}`
-      `http://localhost:8000/${path}`
-    )
+    getURL: (path) => `metamask://app/${path}`,
   },
   browserAction: {
     setBadgeText: noop,
