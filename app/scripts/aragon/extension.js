@@ -11,4 +11,7 @@ module.exports = {
     setBadgeText: noop,
     setBadgeBackgroundColor: noop,
   },
+  tabs: {
+    create: ({ url }) => window.open(url),
+  }
 }

@@ -52,5 +52,5 @@ module.exports = {
     }
   },
   onInstalled: { addListener: () => {} },
-  reload: () => {},
+  reload: () => window.location.reload(),
 }
