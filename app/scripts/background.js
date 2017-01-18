@@ -8,8 +8,7 @@ const messageManager = require('./lib/message-manager')
 const setupMultiplex = require('./lib/stream-utils.js').setupMultiplex
 const MetamaskController = require('./metamask-controller')
 const extension = require('./lib/extension')
-
-const WindowMessageDuplexStream = require('./aragon/window-stream')
+const PostMessageDuplexStream = require('post-message-stream')
 
 const STORAGE_KEY = 'metamask-config'
 var popupIsOpen = false
@@ -61,7 +60,7 @@ function connectRemote (remotePort) {
 }
 
 if ('GULP_ARAGON') {
-  var pluginStream = new WindowMessageDuplexStream({
+  var pluginStream = new PostMessageDuplexStream({
     name: 'background',
     target: 'page',
     targetWindow: window.top,

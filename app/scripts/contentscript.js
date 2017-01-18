@@ -1,5 +1,5 @@
 const LocalMessageDuplexStream = require('post-message-stream')
-const WindowMessageDuplexStream = require('./aragon/window-stream')
+const PostMessageDuplexStream = require('post-message-stream')
 const PongStream = require('ping-pong-stream/pong')
 const PortStream = require('./lib/port-stream.js')
 const ObjectMultiplex = require('./lib/obj-multiplex')
@@ -51,7 +51,7 @@ function setupStreams(){
     var pluginStream = new PortStream(pluginPort)
   } else {
     global._setupMetaMaskPageStream = (iframe) => {
-      var pluginStream = new WindowMessageDuplexStream({
+      var pluginStream = new PostMessageDuplexStream({
         name: 'page',
         target: 'background',
         targetWindow: iframe.contentWindow,
