@@ -92,4 +92,3 @@ InitializeMenuScreen.prototype.showCreateVault = function () {
 InitializeMenuScreen.prototype.showRestoreVault = function () {
   this.props.dispatch(actions.showRestoreVault())
 }
-
