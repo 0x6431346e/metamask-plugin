@@ -11,18 +11,18 @@ const extension = require('./lib/extension')
 const PostMessageDuplexStream = require('post-message-stream')
 
 const STORAGE_KEY = 'metamask-config'
+const METAMASK_DEBUG = 'GULP_METAMASK_DEBUG'
 var popupIsOpen = false
 
 const controller = new MetamaskController({
   // User confirmation callbacks:
   showUnconfirmedMessage: triggerUi,
   unlockAccountMessage: triggerUi,
-  showUnconfirmedTx: triggerUi,
+  showUnapprovedTx: triggerUi,
   // Persistence Methods:
   setData,
   loadData,
 })
-const idStore = controller.idStore
 
 function triggerUi () {
   if (!popupIsOpen) {
@@ -33,9 +33,8 @@ function triggerUi () {
   }
 }
 // On first install, open a window to MetaMask website to how-it-works.
-
 extension.runtime.onInstalled.addListener(function (details) {
-  if (details.reason === 'install') {
+  if ((details.reason === 'install') && (!METAMASK_DEBUG)) {
     extension.tabs.create({url: 'https://metamask.io/#how-it-works'})
   }
 })
@@ -95,13 +94,11 @@ function setupControllerConnection (stream) {
   stream.pipe(dnode).pipe(stream)
   dnode.on('remote', (remote) => {
     // push updates to popup
-    controller.ethStore.on('update', controller.sendUpdate.bind(controller))
-    controller.listeners.push(remote)
-    idStore.on('update', controller.sendUpdate.bind(controller))
-
+    var sendUpdate = remote.sendUpdate.bind(remote)
+    controller.on('update', sendUpdate)
     // teardown on disconnect
     eos(stream, () => {
-      controller.ethStore.removeListener('update', controller.sendUpdate.bind(controller))
+      controller.removeListener('update', sendUpdate)
       popupIsOpen = false
     })
   })
@@ -111,21 +108,23 @@ function setupControllerConnection (stream) {
 // plugin badge text
 //
 
-idStore.on('update', updateBadge)
+controller.txManager.on('updateBadge', updateBadge)
+updateBadge()
 
-function updateBadge (state) {
+function updateBadge () {
   var label = ''
-  var unconfTxs = controller.configManager.unconfirmedTxs()
-  var unconfTxLen = Object.keys(unconfTxs).length
+  var unapprovedTxCount = controller.txManager.unapprovedTxCount
   var unconfMsgs = messageManager.unconfirmedMsgs()
   var unconfMsgLen = Object.keys(unconfMsgs).length
-  var count = unconfTxLen + unconfMsgLen
+  var count = unapprovedTxCount + unconfMsgLen
   if (count) {
     label = String(count)
   }
   extension.browserAction.setBadgeText({ text: label })
   extension.browserAction.setBadgeBackgroundColor({ color: '#506F8B' })
 }
+
+// data :: setters/getters
 
 function loadData () {
   var oldData = getOldStyleData()
