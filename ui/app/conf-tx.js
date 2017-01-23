@@ -4,6 +4,7 @@ const ReactCSSTransitionGroup = require('react-addons-css-transition-group')
 const h = require('react-hyperscript')
 const connect = require('react-redux').connect
 const actions = require('./actions')
+const NetworkIndicator = require('./components/network')
 const txHelper = require('../lib/tx-helper')
 const isPopupOrNotification = require('../../app/scripts/lib/is-popup-or-notification')
 const ethUtil = require('ethereumjs-util')
@@ -18,12 +19,13 @@ function mapStateToProps (state) {
   return {
     identities: state.metamask.identities,
     accounts: state.metamask.accounts,
-    selectedAddress: state.metamask.selectedAddress,
+    selectedAccount: state.metamask.selectedAccount,
     unconfTxs: state.metamask.unconfTxs,
     unconfMsgs: state.metamask.unconfMsgs,
     index: state.appState.currentView.context,
     warning: state.appState.warning,
     network: state.metamask.network,
+    provider: state.metamask.provider,
   }
 }
 
@@ -36,13 +38,16 @@ ConfirmTxScreen.prototype.render = function () {
   var state = this.props
 
   var network = state.network
+  var provider = state.provider
   var unconfTxs = state.unconfTxs
   var unconfMsgs = state.unconfMsgs
+
   var unconfTxList = txHelper(unconfTxs, unconfMsgs, network)
-  var index = state.index !== undefined ? state.index : 0
-  var txData = unconfTxList[index] || unconfTxList[0] || {}
-  var txParams = txData.txParams || {}
+  var index = state.index !== undefined && unconfTxList[index] ? state.index : 0
+  var txData = unconfTxList[index] || {}
+  var txParams = txData.params || {}
   var isNotification = isPopupOrNotification() === 'notification'
+  if (unconfTxList.length === 0) return null
 
   return (
 
@@ -54,6 +59,10 @@ ConfirmTxScreen.prototype.render = function () {
           onClick: this.goHome.bind(this),
         }) : null,
         h('h2.page-subtitle', 'Confirm Transaction'),
+        isNotification ? h(NetworkIndicator, {
+          network: network,
+          provider: provider,
+        }) : null,
       ]),
 
       h('h3', {
@@ -90,12 +99,12 @@ ConfirmTxScreen.prototype.render = function () {
           // Properties
           txData: txData,
           key: txData.id,
-          selectedAddress: state.selectedAddress,
+          selectedAccount: state.selectedAccount,
           accounts: state.accounts,
           identities: state.identities,
-          insufficientBalance: this.checkBalnceAgainstTx(txData),
+          insufficientBalance: this.checkBalanceAgainstTx(txData),
           // Actions
-          buyEth: this.buyEth.bind(this, txParams.from || state.selectedAddress),
+          buyEth: this.buyEth.bind(this, txParams.from || state.selectedAccount),
           sendTransaction: this.sendTransaction.bind(this, txData),
           cancelTransaction: this.cancelTransaction.bind(this, txData),
           signMessage: this.signMessage.bind(this, txData),
@@ -108,27 +117,24 @@ ConfirmTxScreen.prototype.render = function () {
 }
 
 function currentTxView (opts) {
-  if ('txParams' in opts.txData) {
+  const { txData } = opts
+  const { txParams, msgParams } = txData
+
+  if (txParams) {
     // This is a pending transaction
     return h(PendingTx, opts)
-  } else if ('msgParams' in opts.txData) {
+  } else if (msgParams) {
     // This is a pending message to sign
     return h(PendingMsg, opts)
   }
 }
-ConfirmTxScreen.prototype.checkBalnceAgainstTx = function (txData) {
+ConfirmTxScreen.prototype.checkBalanceAgainstTx = function (txData) {
+  if (!txData.txParams) return false
   var state = this.props
-
-  var txParams = txData.txParams || {}
-  var address = txParams.from || state.selectedAddress
+  var address = txData.txParams.from || state.selectedAccount
   var account = state.accounts[address]
   var balance = account ? account.balance : '0x0'
-
-  var gasCost = new BN(ethUtil.stripHexPrefix(txParams.gas || txData.estimatedGas), 16)
-  var gasPrice = new BN(ethUtil.stripHexPrefix(txParams.gasPrice || '0x4a817c800'), 16)
-  var txFee = gasCost.mul(gasPrice)
-  var txValue = new BN(ethUtil.stripHexPrefix(txParams.value || '0x0'), 16)
-  var maxCost = txValue.add(txFee)
+  var maxCost = new BN(txData.maxCost)
 
   var balanceBn = new BN(ethUtil.stripHexPrefix(balance), 16)
   return maxCost.gt(balanceBn)
