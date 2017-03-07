@@ -6,6 +6,7 @@ const rp = require('request-promise')
 const TESTNET_RPC = MetamaskConfig.network.testnet
 const MAINNET_RPC = MetamaskConfig.network.mainnet
 const MORDEN_RPC = MetamaskConfig.network.morden
+const KOVAN_RPC = MetamaskConfig.network.kovan
 const txLimit = 40
 
 /* The config-manager is a convenience object
@@ -61,7 +62,8 @@ ConfigManager.prototype.getConfig = function () {
   } else {
     return {
       provider: {
-        type: 'testnet',
+        type: 'rpc',
+        rpcTarget: KOVAN_RPC,
       },
     }
   }
