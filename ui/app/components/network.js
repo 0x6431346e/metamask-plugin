@@ -40,6 +40,10 @@ Network.prototype.render = function () {
   } else if (parseInt(networkNumber) === 3) {
     hoverText = 'Ropsten Test Network'
     iconName = 'ropsten-test-network'
+  }
+  else if (parseInt(networkNumber) === 42) {
+    hoverText = 'Kovan Test Network'
+    iconName = 'aragon-kovan'
   } else {
     hoverText = 'Unknown Private Network'
     iconName = 'unknown-private-network'
@@ -69,6 +73,15 @@ Network.prototype.render = function () {
                   color: '#ff6666',
                 }},
               'Ropsten Test Net'),
+            ])
+          case 'aragon-kovan':
+            return h('.network-indicator', [
+              h('.menu-icon.purple-dot'),
+              h('.network-name', {
+                style: {
+                  color: '#482cbd',
+                }},
+              'Kovan Test Net'),
             ])
           default:
             return h('.network-indicator', [

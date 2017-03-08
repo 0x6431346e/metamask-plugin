@@ -1,6 +1,7 @@
 const MAINET_RPC_URL = 'https://mainnet.infura.io/metamask'
 const TESTNET_RPC_URL = 'https://ropsten.infura.io/metamask'
-const DEFAULT_RPC_URL = TESTNET_RPC_URL
+const ARAGON_KOVAN_RPC_URL = 'https://kovan.aragon.one'
+const DEFAULT_RPC_URL = ARAGON_KOVAN_RPC_URL
 
 global.METAMASK_DEBUG = 'GULP_METAMASK_DEBUG'
 global.ARAGON = 'GULP_ARAGON'
@@ -12,5 +13,6 @@ module.exports = {
     mainnet: MAINET_RPC_URL,
     testnet: TESTNET_RPC_URL,
     morden: TESTNET_RPC_URL,
+    kovan: ARAGON_KOVAN_RPC_URL,
   },
 }

@@ -181,6 +181,12 @@ hr.horizontal-line {
   border-radius: 10px;
 }
 
+.purple-dot {
+  background: #482cbd;
+  color: white;
+  border-radius: 10px;
+}
+
 .diamond {
   transform: rotate(45deg);
   background: #038789;
