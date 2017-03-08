@@ -186,6 +186,12 @@ hr.horizontal-line {
   background: #038789;
 }
 
+.purple-dot {
+  background: #482cbd;
+  color: white;
+  border-radius: 10px;
+}
+
 .hollow-diamond {
   transform: rotate(45deg);
   border: 1px solid #038789;

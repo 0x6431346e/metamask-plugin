@@ -1,5 +1,3 @@
-if (!global._runtime) global._runtime = {}
-
 class Port {
   constructor({ name }, peers = []) {
     this.name = name
@@ -36,6 +34,8 @@ class Port {
   }
 }
 
+if (!global._runtime) global._runtime = {}
+
 module.exports = {
   connect: ({ name }) => {
     const client = new Port({ name }, [global._runtime.server])
@@ -44,13 +44,17 @@ module.exports = {
   },
   onConnect: {
     addListener: (cb) => {
-      global._runtime.server = new Port({ name: 'server' })
+      global._runtime.server = new Port({ name: 'server' }),
       global._runtime.onConnect = (client) => {
         global._runtime.server.peers.push(client)
         cb(client)
       }
+      global._runtime.onServer()
     }
   },
   onInstalled: { addListener: () => {} },
   reload: () => window.location.reload(),
+  getManifest: () => ({
+    icons: {},
+  })
 }

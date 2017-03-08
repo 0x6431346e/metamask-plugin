@@ -13,10 +13,12 @@ var name = isPopupOrNotification()
 closePopupIfOpen(name)
 window.METAMASK_UI_TYPE = name
 
-var pluginPort = extension.runtime.connect({ name })
-var portStream = new PortStream(pluginPort)
+global._runtime.onServer = () => {
+  var pluginPort = extension.runtime.connect({ name })
+  var portStream = new PortStream(pluginPort)
 
-startPopup(portStream)
+  startPopup(portStream)
+}
 
 function closePopupIfOpen (name) {
   if (name !== 'notification') {
