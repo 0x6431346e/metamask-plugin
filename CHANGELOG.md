@@ -2,6 +2,39 @@
 
 ## Current Master
 
+## 3.3.0 2017-2-20
+
+- Add personal_sign and personal_ecRecover support.
+- net_version has been made synchronous.
+- Test suite for migrations expanded.
+- Network now changeable from lock screen.
+- Improve test coverage of eth.sign behavior, including a code example of verifying a signature.
+
+## 3.2.2 2017-2-8
+
+- Revert eth.sign behavior to the previous one with a big warning.  We will be gradually implementing the new behavior over the coming time. https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_sign
+
+- Improve test coverage of eth.sign behavior, including a code example of verifying a signature.
+
+## 3.2.2 2017-2-8
+
+- Revert eth.sign behavior to the previous one with a big warning.  We will be gradually implementing the new behavior over the coming time. https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_sign
+
+## 3.2.1 2017-2-8
+
+- Revert back to old style message signing.
+- Fixed some build errors that were causing a variety of bugs.
+
+## 3.2.0 2017-2-8
+
+- Add ability to import accounts in JSON file format (used by Mist, Geth, MyEtherWallet, and more!)
+- Fix unapproved messages not being included in extension badge.
+- Fix rendering bug where the Confirm transaction view would lets you approve transactions when the account has insufficient balance.
+
+## 3.1.2 2017-1-24
+
+- Fix "New Account" default keychain
+
 ## 3.1.1 2017-1-20
 
 - Fix HD wallet seed export

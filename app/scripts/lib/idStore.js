@@ -94,12 +94,7 @@ IdentityStore.prototype.getState = function () {
     isInitialized: !!configManager.getWallet() && !seedWords,
     isUnlocked: this._isUnlocked(),
     seedWords: seedWords,
-    isDisclaimerConfirmed: configManager.getConfirmedDisclaimer(),
     selectedAddress: configManager.getSelectedAccount(),
-    shapeShiftTxList: configManager.getShapeShiftTxList(),
-    currentFiat: configManager.getCurrentFiat(),
-    conversionRate: configManager.getConversionRate(),
-    conversionDate: configManager.getConversionDate(),
     gasMultiplier: configManager.getGasMultiplier(),
   }))
 }
@@ -347,4 +342,3 @@ IdentityStore.prototype._autoFaucet = function () {
 }
 
 // util
-

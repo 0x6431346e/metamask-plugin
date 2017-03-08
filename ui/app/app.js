@@ -5,7 +5,6 @@ const h = require('react-hyperscript')
 const actions = require('./actions')
 const ReactCSSTransitionGroup = require('react-addons-css-transition-group')
 // init
-const DisclaimerScreen = require('./first-time/disclaimer')
 const InitializeMenuScreen = require('./first-time/init-menu')
 const NewKeyChainScreen = require('./new-keychain')
 // unlock
@@ -43,7 +42,7 @@ function mapStateToProps (state) {
   return {
     // state from plugin
     isLoading: state.appState.isLoading,
-    isDisclaimerConfirmed: state.metamask.isDisclaimerConfirmed,
+    loadingMessage: state.appState.loadingMessage,
     noActiveNotices: state.metamask.noActiveNotices,
     isInitialized: state.metamask.isInitialized,
     isUnlocked: state.metamask.isUnlocked,
@@ -51,8 +50,8 @@ function mapStateToProps (state) {
     activeAddress: state.appState.activeAddress,
     transForward: state.appState.transForward,
     seedWords: state.metamask.seedWords,
-    unconfTxs: state.metamask.unconfTxs,
-    unconfMsgs: state.metamask.unconfMsgs,
+    unapprovedTxs: state.metamask.unapprovedTxs,
+    unapprovedMsgs: state.metamask.unapprovedMsgs,
     menuOpen: state.appState.menuOpen,
     network: state.metamask.network,
     provider: state.metamask.provider,
@@ -64,7 +63,7 @@ function mapStateToProps (state) {
 
 App.prototype.render = function () {
   var props = this.props
-  const { isLoading, transForward } = props
+  const { isLoading, loadingMessage, transForward } = props
 
   return (
 
@@ -76,7 +75,7 @@ App.prototype.render = function () {
       },
     }, [
 
-      h(LoadingIndicator, { isLoading }),
+      h(LoadingIndicator, { isLoading, loadingMessage }),
 
       // app bar
       this.renderAppBar(),
@@ -123,9 +122,9 @@ App.prototype.renderAppBar = function () {
           background: props.isUnlocked ? 'white' : 'none',
           height: '36px',
           position: 'relative',
-          zIndex: 2,
+          zIndex: 10,
         },
-      }, props.isUnlocked && [
+      }, [
 
         h('div', {
           style: {
@@ -160,14 +159,14 @@ App.prototype.renderAppBar = function () {
         ]),
 
         // metamask name
-        h('h1', {
+        props.isUnlocked && h('h1', {
           style: {
             position: 'relative',
             left: '9px',
           },
         }, 'MetaMask'),
 
-        h('div', {
+        props.isUnlocked && h('div', {
           style: {
             display: 'flex',
             flexDirection: 'row',
@@ -176,7 +175,7 @@ App.prototype.renderAppBar = function () {
         }, [
 
           // small accounts nav
-          h(Tooltip, { title: 'Switch Accounts' }, [
+          props.isUnlocked && h(Tooltip, { title: 'Switch Accounts' }, [
             h('img.cursor-pointer.color-orange', {
               src: 'images/switch_acc.svg',
               style: {
@@ -191,7 +190,7 @@ App.prototype.renderAppBar = function () {
           ]),
 
           // hamburger
-          h(SandwichExpando, {
+          props.isUnlocked && h(SandwichExpando, {
             width: 16,
             barHeight: 2,
             padding: 0,
@@ -263,7 +262,7 @@ App.prototype.renderNetworkDropdown = function () {
 
     this.renderCustomOption(props.provider),
 
-    h(DropMenuItem, {
+    props.isUnlocked && h(DropMenuItem, {
       label: 'Custom RPC',
       closeMenu: () => this.setState({ isNetworkMenuOpen: false }),
       action: () => this.props.dispatch(actions.showConfigPage()),
@@ -350,8 +349,19 @@ App.prototype.renderBackButton = function (style, justArrow = false) {
 App.prototype.renderPrimary = function () {
   var props = this.props
 
-  if (!props.isDisclaimerConfirmed) {
-    return h(DisclaimerScreen, {key: 'disclaimerScreen'})
+  // notices
+  if (!props.noActiveNotices && !global.METAMASK_DEBUG) {
+    return h(NoticeScreen, {
+      notice: props.lastUnreadNotice,
+      key: 'NoticeScreen',
+      onConfirm: () => props.dispatch(actions.markNoticeRead(props.lastUnreadNotice)),
+    })
+  } else if (props.lostAccounts && props.lostAccounts.length > 0) {
+    return h(NoticeScreen, {
+      notice: generateLostAccountsNotice(props.lostAccounts),
+      key: 'LostAccountsNotice',
+      onConfirm: () => props.dispatch(actions.markAccountsFound()),
+    })
   }
 
   if (props.seedWords) {
@@ -381,21 +391,6 @@ App.prototype.renderPrimary = function () {
       default:
         return h(UnlockScreen, {key: 'locked'})
     }
-  }
-
-  // notices
-  if (!props.noActiveNotices) {
-    return h(NoticeScreen, {
-      notice: props.lastUnreadNotice,
-      key: 'NoticeScreen',
-      onConfirm: () => props.dispatch(actions.markNoticeRead(props.lastUnreadNotice)),
-    })
-  } else if (props.lostAccounts && props.lostAccounts.length > 0) {
-    return h(NoticeScreen, {
-      notice: generateLostAccountsNotice(props.lostAccounts),
-      key: 'LostAccountsNotice',
-      onConfirm: () => props.dispatch(actions.markAccountsFound()),
-    })
   }
 
   // show current view
