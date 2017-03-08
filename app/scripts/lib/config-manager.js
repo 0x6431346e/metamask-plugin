@@ -5,8 +5,6 @@ const normalize = require('eth-sig-util').normalize
 const TESTNET_RPC = MetamaskConfig.network.testnet
 const MAINNET_RPC = MetamaskConfig.network.mainnet
 const MORDEN_RPC = MetamaskConfig.network.morden
-const KOVAN_RPC = MetamaskConfig.network.kovan
-const txLimit = 40
 
 /* The config-manager is a convenience object
  * wrapping a pojo-migrator.
@@ -31,16 +29,7 @@ ConfigManager.prototype.setConfig = function (config) {
 
 ConfigManager.prototype.getConfig = function () {
   var data = this.getData()
-  if ('config' in data) {
-    return data.config
-  } else {
-    return {
-      provider: {
-        type: 'rpc',
-        rpcTarget: KOVAN_RPC,
-      },
-    }
-  }
+  return data.config
 }
 
 ConfigManager.prototype.setRpcTarget = function (rpcUrl) {

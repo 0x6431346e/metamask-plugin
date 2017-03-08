@@ -16,23 +16,6 @@ const firstTimeState = require('./first-time-state')
 const STORAGE_KEY = 'metamask-config'
 const METAMASK_DEBUG = 'GULP_METAMASK_DEBUG'
 
-// HEAD
-function triggerUi () {
-  if (!popupIsOpen) {
-    notification.show()
-  } else if ('GULP_ARAGON') {
-    top.postMessage({metaMask: 'show'}, '*')
-    window.postMessage({aragon: 'showConfTxPage'}, '*')
-  }
-}
-// On first install, open a window to MetaMask website to how-it-works.
-extension.runtime.onInstalled.addListener(function (details) {
-  if ((details.reason === 'install') && (!METAMASK_DEBUG)) {
-    extension.tabs.create({url: 'https://metamask.io/#how-it-works'})
-  }
-})
-//
-
 const log = require('loglevel')
 window.log = log
 log.setDefaultLevel(METAMASK_DEBUG ? 'debug' : 'warn')
@@ -40,7 +23,7 @@ log.setDefaultLevel(METAMASK_DEBUG ? 'debug' : 'warn')
 let popupIsOpen = false
 
 // HEAD
-extension.runtime.onConnect.addListener(connectRemote)
+/* extension.runtime.onConnect.addListener(connectRemote)
 function connectRemote (remotePort) {
   var isMetaMaskInternalProcess = remotePort.name === 'popup' || remotePort.name === 'notification'
   var portStream = new PortStream(remotePort)
@@ -70,7 +53,7 @@ function setupUntrustedCommunication (connectionStream, originDomain) {
   // connect features
   controller.setupProviderConnection(mx.createStream('provider'), originDomain)
   controller.setupPublicConfig(mx.createStream('publicConfig'))
-}
+}*/
 //
 
 // state persistence
@@ -123,6 +106,15 @@ function setupController (initState) {
   })
   global.metamaskController = controller
 
+  if ('GULP_ARAGON') {
+    var pluginStream = new PostMessageDuplexStream({
+      name: 'background',
+      target: 'page',
+      targetWindow: window.top,
+    })
+    controller.setupUntrustedCommunication(pluginStream, '*')
+  }
+
   // setup state persistence
   pipe(
     controller.store,
@@ -142,6 +134,7 @@ function setupController (initState) {
 
   extension.runtime.onConnect.addListener(connectRemote)
   function connectRemote (remotePort) {
+    console.log('Got a connection from ' + remotePort.name)
     var isMetaMaskInternalProcess = remotePort.name === 'popup' || remotePort.name === 'notification'
     var portStream = new PortStream(remotePort)
     if (isMetaMaskInternalProcess) {
@@ -192,7 +185,12 @@ function setupController (initState) {
 
 // popup trigger
 function triggerUi () {
-  if (!popupIsOpen) notification.show()
+  if (!popupIsOpen) {
+    notification.show()
+  } else if ('GULP_ARAGON') {
+    top.postMessage({metaMask: 'show'}, '*')
+    window.postMessage({aragon: 'showConfTxPage'}, '*')
+  }
 }
 
 // On first install, open a window to MetaMask website to how-it-works.

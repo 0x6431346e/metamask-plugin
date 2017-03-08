@@ -1,5 +1,3 @@
-if (!global._runtime) global._runtime = {}
-
 class Port {
   constructor({ name }, peers = []) {
     this.name = name
@@ -36,21 +34,39 @@ class Port {
   }
 }
 
+if (!global._runtime) {
+  global._runtime = {
+    server: new Port({ name: 'server' }),
+    delayedConnections: [],
+  }
+}
+
 module.exports = {
   connect: ({ name }) => {
     const client = new Port({ name }, [global._runtime.server])
-    global._runtime.onConnect(client)
+    if (global._runtime.onConnect) {
+      global._runtime.onConnect(client)
+    } else {
+      global._runtime.delayedConnections.push(client)
+    }
     return global._runtime.server
   },
   onConnect: {
     addListener: (cb) => {
-      global._runtime.server = new Port({ name: 'server' })
       global._runtime.onConnect = (client) => {
         global._runtime.server.peers.push(client)
         cb(client)
       }
+
+      for (const client of global._runtime.delayedConnections) {
+        global._runtime.onConnect(client)
+      }
+      delete global._runtime.delayedConnections
     }
   },
   onInstalled: { addListener: () => {} },
   reload: () => window.location.reload(),
+  getManifest: () => ({
+    icons: {},
+  })
 }

@@ -44,6 +44,7 @@ function setupStreams () {
   })
   pageStream.on('error', console.error)
   if (!'GULP_ARAGON') {
+    console.log('contentscript connecting to background')
     var pluginPort = extension.runtime.connect({name: 'contentscript'})
     var pluginStream = new PortStream(pluginPort)
   } else {

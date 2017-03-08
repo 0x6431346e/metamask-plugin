@@ -13,6 +13,7 @@ var name = isPopupOrNotification()
 closePopupIfOpen(name)
 window.METAMASK_UI_TYPE = name
 
+console.log('popup connecting to background')
 var pluginPort = extension.runtime.connect({ name })
 var portStream = new PortStream(pluginPort)
 
