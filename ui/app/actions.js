@@ -22,8 +22,6 @@ var actions = {
   clearNotices: clearNotices,
   markAccountsFound,
   // intialize screen
-  AGREE_TO_DISCLAIMER: 'AGREE_TO_DISCLAIMER',
-  agreeToDisclaimer: agreeToDisclaimer,
   CREATE_NEW_VAULT_IN_PROGRESS: 'CREATE_NEW_VAULT_IN_PROGRESS',
   SHOW_CREATE_VAULT: 'SHOW_CREATE_VAULT',
   SHOW_RESTORE_VAULT: 'SHOW_RESTORE_VAULT',
@@ -43,6 +41,7 @@ var actions = {
   createNewVaultAndRestore: createNewVaultAndRestore,
   createNewVaultInProgress: createNewVaultInProgress,
   addNewKeyring,
+  importNewAccount,
   addNewAccount,
   NEW_ACCOUNT_SCREEN: 'NEW_ACCOUNT_SCREEN',
   navigateToNewAccountScreen,
@@ -89,11 +88,13 @@ var actions = {
   TRANSACTION_ERROR: 'TRANSACTION_ERROR',
   NEXT_TX: 'NEXT_TX',
   PREVIOUS_TX: 'PREV_TX',
-  setSelectedAccount: setSelectedAccount,
   signMsg: signMsg,
   cancelMsg: cancelMsg,
+  signPersonalMsg,
+  cancelPersonalMsg,
   sendTx: sendTx,
   signTx: signTx,
+  updateAndApproveTx,
   cancelTx: cancelTx,
   completedTx: completedTx,
   txError: txError,
@@ -158,6 +159,7 @@ var actions = {
   showNewKeychain: showNewKeychain,
 
   callBackgroundThenUpdate,
+  forceUpdateMetamaskState,
 }
 
 module.exports = actions
@@ -179,13 +181,14 @@ function tryUnlockMetamask (password) {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
     dispatch(actions.unlockInProgress())
-    background.submitPassword(password, (err, newState) => {
+    log.debug(`background.submitPassword`)
+    background.submitPassword(password, (err) => {
       dispatch(actions.hideLoadingIndication())
       if (err) {
         dispatch(actions.unlockFailed(err.message))
       } else {
         dispatch(actions.transitionForward())
-        dispatch(actions.updateMetamaskState(newState))
+        forceUpdateMetamaskState(dispatch)
       }
     })
   }
@@ -206,6 +209,7 @@ function transitionBackward () {
 function confirmSeedWords () {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
+    log.debug(`background.clearSeedWordCache`)
     background.clearSeedWordCache((err, account) => {
       dispatch(actions.hideLoadingIndication())
       if (err) {
@@ -221,6 +225,7 @@ function confirmSeedWords () {
 function createNewVaultAndRestore (password, seed) {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
+    log.debug(`background.createNewVaultAndRestore`)
     background.createNewVaultAndRestore(password, seed, (err) => {
       dispatch(actions.hideLoadingIndication())
       if (err) return dispatch(actions.displayWarning(err.message))
@@ -230,7 +235,23 @@ function createNewVaultAndRestore (password, seed) {
 }
 
 function createNewVaultAndKeychain (password) {
-  return callBackgroundThenUpdate(background.createNewVaultAndKeychain, password)
+  return (dispatch) => {
+    dispatch(actions.showLoadingIndication())
+    log.debug(`background.createNewVaultAndKeychain`)
+    background.createNewVaultAndKeychain(password, (err) => {
+      if (err) {
+        return dispatch(actions.displayWarning(err.message))
+      }
+      log.debug(`background.placeSeedWords`)
+      background.placeSeedWords((err) => {
+        if (err) {
+          return dispatch(actions.displayWarning(err.message))
+        }
+        dispatch(actions.hideLoadingIndication())
+        forceUpdateMetamaskState(dispatch)
+      })
+    })
+  }
 }
 
 function revealSeedConfirmation () {
@@ -242,8 +263,10 @@ function revealSeedConfirmation () {
 function requestRevealSeed (password) {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
+    log.debug(`background.submitPassword`)
     background.submitPassword(password, (err) => {
       if (err) return dispatch(actions.displayWarning(err.message))
+      log.debug(`background.placeSeedWords`)
       background.placeSeedWords((err) => {
         if (err) return dispatch(actions.displayWarning(err.message))
         dispatch(actions.hideLoadingIndication())
@@ -255,11 +278,33 @@ function requestRevealSeed (password) {
 function addNewKeyring (type, opts) {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
-    background.addNewKeyring(type, opts, (err, newState) => {
+    log.debug(`background.addNewKeyring`)
+    background.addNewKeyring(type, opts, (err) => {
       dispatch(actions.hideLoadingIndication())
       if (err) return dispatch(actions.displayWarning(err.message))
-      dispatch(actions.updateMetamaskState(newState))
       dispatch(actions.showAccountsPage())
+    })
+  }
+}
+
+function importNewAccount (strategy, args) {
+  return (dispatch) => {
+    dispatch(actions.showLoadingIndication('This may take a while, be patient.'))
+    log.debug(`background.importAccountWithStrategy`)
+    background.importAccountWithStrategy(strategy, args, (err) => {
+      dispatch(actions.hideLoadingIndication())
+      if (err) return dispatch(actions.displayWarning(err.message))
+      log.debug(`background.getState`)
+      background.getState((err, newState) => {
+        if (err) {
+          return dispatch(actions.displayWarning(err.message))
+        }
+        dispatch(actions.updateMetamaskState(newState))
+        dispatch({
+          type: actions.SHOW_ACCOUNT_DETAIL,
+          value: newState.selectedAddress,
+        })
+      })
     })
   }
 }
@@ -270,8 +315,9 @@ function navigateToNewAccountScreen() {
   }
 }
 
-function addNewAccount (ringNumber = 0) {
-  return callBackgroundThenUpdate(background.addNewAccount, ringNumber)
+function addNewAccount () {
+  log.debug(`background.addNewAccount`)
+  return callBackgroundThenUpdate(background.addNewAccount)
 }
 
 function showInfoPage () {
@@ -280,15 +326,16 @@ function showInfoPage () {
   }
 }
 
-function setSelectedAccount (address) {
-  return callBackgroundThenUpdate(background.setSelectedAccount, address)
-}
-
-function setCurrentFiat (fiat) {
+function setCurrentFiat (currencyCode) {
   return (dispatch) => {
     dispatch(this.showLoadingIndication())
-    background.setCurrentFiat(fiat, (data, err) => {
+    log.debug(`background.setCurrentFiat`)
+    background.setCurrentCurrency(currencyCode, (err, data) => {
       dispatch(this.hideLoadingIndication())
+      if (err) {
+        console.error(err.stack)
+        return dispatch(actions.displayWarning(err.message))
+      }
       dispatch({
         type: this.SET_CURRENT_FIAT,
         value: {
@@ -302,13 +349,38 @@ function setCurrentFiat (fiat) {
 }
 
 function signMsg (msgData) {
+  log.debug('action - signMsg')
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
 
-    background.signMessage(msgData, (err) => {
+    log.debug(`actions calling background.signMessage`)
+    background.signMessage(msgData, (err, newState) => {
+      log.debug('signMessage called back')
+      dispatch(actions.updateMetamaskState(newState))
       dispatch(actions.hideLoadingIndication())
 
+      if (err) log.error(err)
       if (err) return dispatch(actions.displayWarning(err.message))
+
+      dispatch(actions.completedTx(msgData.metamaskId))
+    })
+  }
+}
+
+function signPersonalMsg (msgData) {
+  log.debug('action - signPersonalMsg')
+  return (dispatch) => {
+    dispatch(actions.showLoadingIndication())
+
+    log.debug(`actions calling background.signPersonalMessage`)
+    background.signPersonalMessage(msgData, (err, newState) => {
+      log.debug('signPersonalMessage called back')
+      dispatch(actions.updateMetamaskState(newState))
+      dispatch(actions.hideLoadingIndication())
+
+      if (err) log.error(err)
+      if (err) return dispatch(actions.displayWarning(err.message))
+
       dispatch(actions.completedTx(msgData.metamaskId))
     })
   }
@@ -316,24 +388,36 @@ function signMsg (msgData) {
 
 function signTx (txData) {
   return (dispatch) => {
-    background.setGasMultiplier(txData.gasMultiplier, (err) => {
+    web3.eth.sendTransaction(txData, (err, data) => {
+      dispatch(actions.hideLoadingIndication())
       if (err) return dispatch(actions.displayWarning(err.message))
-      web3.eth.sendTransaction(txData, (err, data) => {
-        dispatch(actions.hideLoadingIndication())
-        if (err) return dispatch(actions.displayWarning(err.message))
-        dispatch(actions.hideWarning())
-        dispatch(actions.goHome())
-      })
-      dispatch(this.showConfTxPage())
+      dispatch(actions.hideWarning())
+      dispatch(actions.goHome())
     })
+    dispatch(this.showConfTxPage())
   }
 }
 
 function sendTx (txData) {
+  log.info(`actions - sendTx: ${JSON.stringify(txData.txParams)}`)
   return (dispatch) => {
+    log.debug(`actions calling background.approveTransaction`)
     background.approveTransaction(txData.id, (err) => {
       if (err) {
-        alert(err.message)
+        dispatch(actions.txError(err))
+        return console.error(err.message)
+      }
+      dispatch(actions.completedTx(txData.id))
+    })
+  }
+}
+
+function updateAndApproveTx (txData) {
+  log.info('actions: updateAndApproveTx: ' + JSON.stringify(txData))
+  return (dispatch) => {
+    log.debug(`actions calling background.updateAndApproveTx`)
+    background.updateAndApproveTransaction(txData, (err) => {
+      if (err) {
         dispatch(actions.txError(err))
         return console.error(err.message)
       }
@@ -345,7 +429,7 @@ function sendTx (txData) {
 function completedTx (id) {
   return {
     type: actions.COMPLETED_TX,
-    id,
+    value: id,
   }
 }
 
@@ -357,11 +441,19 @@ function txError (err) {
 }
 
 function cancelMsg (msgData) {
+  log.debug(`background.cancelMessage`)
   background.cancelMessage(msgData.id)
   return actions.completedTx(msgData.id)
 }
 
+function cancelPersonalMsg (msgData) {
+  const id = msgData.id
+  background.cancelPersonalMessage(id)
+  return actions.completedTx(id)
+}
+
 function cancelTx (txData) {
+  log.debug(`background.cancelTransaction`)
   background.cancelTransaction(txData.id)
   return actions.completedTx(txData.id)
 }
@@ -397,22 +489,6 @@ function showInitializeMenu () {
 function showImportPage () {
   return {
     type: actions.SHOW_IMPORT_PAGE,
-  }
-}
-
-function agreeToDisclaimer () {
-  return (dispatch) => {
-    dispatch(this.showLoadingIndication())
-    background.agreeToDisclaimer((err) => {
-      if (err) {
-        return dispatch(actions.displayWarning(err.message))
-      }
-
-      dispatch(this.hideLoadingIndication())
-      dispatch({
-        type: this.AGREE_TO_DISCLAIMER,
-      })
-    })
   }
 }
 
@@ -473,22 +549,22 @@ function updateMetamaskState (newState) {
 }
 
 function lockMetamask () {
+  log.debug(`background.setLocked`)
   return callBackgroundThenUpdate(background.setLocked)
 }
 
 function showAccountDetail (address) {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
-    background.setSelectedAccount(address, (err, newState) => {
+    log.debug(`background.setSelectedAddress`)
+    background.setSelectedAddress(address, (err) => {
       dispatch(actions.hideLoadingIndication())
       if (err) {
         return dispatch(actions.displayWarning(err.message))
       }
-
-      dispatch(actions.updateMetamaskState(newState))
       dispatch({
         type: actions.SHOW_ACCOUNT_DETAIL,
-        value: newState.selectedAccount,
+        value: address,
       })
     })
   }
@@ -553,6 +629,7 @@ function goBackToInitView () {
 function markNoticeRead (notice) {
   return (dispatch) => {
     dispatch(this.showLoadingIndication())
+    log.debug(`background.markNoticeRead`)
     background.markNoticeRead(notice, (err, notice) => {
       dispatch(this.hideLoadingIndication())
       if (err) {
@@ -584,6 +661,7 @@ function clearNotices () {
 }
 
 function markAccountsFound() {
+  log.debug(`background.markAccountsFound`)
   return callBackgroundThenUpdate(background.markAccountsFound)
 }
 
@@ -592,6 +670,7 @@ function markAccountsFound() {
 //
 
 function setRpcTarget (newRpc) {
+  log.debug(`background.setRpcTarget`)
   background.setRpcTarget(newRpc)
   return {
     type: actions.SET_RPC_TARGET,
@@ -600,6 +679,7 @@ function setRpcTarget (newRpc) {
 }
 
 function setProviderType (type) {
+  log.debug(`background.setProviderType`)
   background.setProviderType(type)
   return {
     type: actions.SET_PROVIDER_TYPE,
@@ -608,15 +688,17 @@ function setProviderType (type) {
 }
 
 function useEtherscanProvider () {
+  log.debug(`background.useEtherscanProvider`)
   background.useEtherscanProvider()
   return {
     type: actions.USE_ETHERSCAN_PROVIDER,
   }
 }
 
-function showLoadingIndication () {
+function showLoadingIndication (message) {
   return {
     type: actions.SHOW_LOADING,
+    value: message,
   }
 }
 
@@ -663,6 +745,7 @@ function exportAccount (address) {
   return function (dispatch) {
     dispatch(self.showLoadingIndication())
 
+    log.debug(`background.exportAccount`)
     background.exportAccount(address, function (err, result) {
       dispatch(self.hideLoadingIndication())
 
@@ -686,6 +769,7 @@ function showPrivateKey (key) {
 function saveAccountLabel (account, label) {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
+    log.debug(`background.saveAccountLabel`)
     background.saveAccountLabel(account, label, (err) => {
       dispatch(actions.hideLoadingIndication())
       if (err) {
@@ -707,6 +791,7 @@ function showSendPage () {
 
 function buyEth (address, amount) {
   return (dispatch) => {
+    log.debug(`background.buyEth`)
     background.buyEth(address, amount)
     dispatch({
       type: actions.BUY_ETH,
@@ -782,9 +867,11 @@ function coinShiftRquest (data, marketData) {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
     shapeShiftRequest('shift', { method: 'POST', data}, (response) => {
+      dispatch(actions.hideLoadingIndication())
       if (response.error) return dispatch(actions.displayWarning(response.error))
       var message = `
         Deposit your ${response.depositType} to the address bellow:`
+      log.debug(`background.createShapeShiftTx`)
       background.createShapeShiftTx(response.deposit, response.depositType)
       dispatch(actions.showQrView(response.deposit, [message].concat(marketData)))
     })
@@ -853,12 +940,22 @@ function shapeShiftRequest (query, options, cb) {
 function callBackgroundThenUpdate (method, ...args) {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
-    method.call(background, ...args, (err, newState) => {
+    method.call(background, ...args, (err) => {
       dispatch(actions.hideLoadingIndication())
       if (err) {
         return dispatch(actions.displayWarning(err.message))
       }
-      dispatch(actions.updateMetamaskState(newState))
+      forceUpdateMetamaskState(dispatch)
     })
   }
+}
+
+function forceUpdateMetamaskState(dispatch){
+  log.debug(`background.getState`)
+  background.getState((err, newState) => {
+    if (err) {
+      return dispatch(actions.displayWarning(err.message))
+    }
+    dispatch(actions.updateMetamaskState(newState))
+  })
 }

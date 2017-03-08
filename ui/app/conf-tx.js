@@ -12,6 +12,8 @@ const BN = ethUtil.BN
 
 const PendingTx = require('./components/pending-tx')
 const PendingMsg = require('./components/pending-msg')
+const PendingPersonalMsg = require('./components/pending-personal-msg')
+const Loading = require('./components/loading')
 
 module.exports = connect(mapStateToProps)(ConfirmTxScreen)
 
@@ -19,9 +21,10 @@ function mapStateToProps (state) {
   return {
     identities: state.metamask.identities,
     accounts: state.metamask.accounts,
-    selectedAccount: state.metamask.selectedAccount,
-    unconfTxs: state.metamask.unconfTxs,
-    unconfMsgs: state.metamask.unconfMsgs,
+    selectedAddress: state.metamask.selectedAddress,
+    unapprovedTxs: state.metamask.unapprovedTxs,
+    unapprovedMsgs: state.metamask.unapprovedMsgs,
+    unapprovedPersonalMsgs: state.metamask.unapprovedPersonalMsgs,
     index: state.appState.currentView.context,
     warning: state.appState.warning,
     network: state.metamask.network,
@@ -35,19 +38,18 @@ function ConfirmTxScreen () {
 }
 
 ConfirmTxScreen.prototype.render = function () {
-  var state = this.props
+  const props = this.props
+  const { network, provider, unapprovedTxs,
+    unapprovedMsgs, unapprovedPersonalMsgs } = props
 
-  var network = state.network
-  var provider = state.provider
-  var unconfTxs = state.unconfTxs
-  var unconfMsgs = state.unconfMsgs
-
-  var unconfTxList = txHelper(unconfTxs, unconfMsgs, network)
-  var index = state.index !== undefined && unconfTxList[index] ? state.index : 0
+  var unconfTxList = txHelper(unapprovedTxs, unapprovedMsgs, unapprovedPersonalMsgs, network)
+  var index = props.index !== undefined && unconfTxList[index] ? props.index : 0
   var txData = unconfTxList[index] || {}
   var txParams = txData.params || {}
   var isNotification = isPopupOrNotification() === 'notification'
-  if (unconfTxList.length === 0) return null
+
+  log.info(`rendering a combined ${unconfTxList.length} unconf msg & txs`)
+  if (unconfTxList.length === 0) return h(Loading)
 
   return (
 
@@ -73,20 +75,20 @@ ConfirmTxScreen.prototype.render = function () {
       }, [
         h('i.fa.fa-arrow-left.fa-lg.cursor-pointer', {
           style: {
-            display: state.index === 0 ? 'none' : 'inline-block',
+            display: props.index === 0 ? 'none' : 'inline-block',
           },
-          onClick: () => state.dispatch(actions.previousTx()),
+          onClick: () => props.dispatch(actions.previousTx()),
         }),
-        ` ${state.index + 1} of ${unconfTxList.length} `,
+        ` ${props.index + 1} of ${unconfTxList.length} `,
         h('i.fa.fa-arrow-right.fa-lg.cursor-pointer', {
           style: {
-            display: state.index + 1 === unconfTxList.length ? 'none' : 'inline-block',
+            display: props.index + 1 === unconfTxList.length ? 'none' : 'inline-block',
           },
-          onClick: () => state.dispatch(actions.nextTx()),
+          onClick: () => props.dispatch(actions.nextTx()),
         }),
       ]),
 
-      warningIfExists(state.warning),
+      warningIfExists(props.warning),
 
       h(ReactCSSTransitionGroup, {
         className: 'css-transition-group',
@@ -99,16 +101,20 @@ ConfirmTxScreen.prototype.render = function () {
           // Properties
           txData: txData,
           key: txData.id,
-          selectedAccount: state.selectedAccount,
-          accounts: state.accounts,
-          identities: state.identities,
+          selectedAddress: props.selectedAddress,
+          accounts: props.accounts,
+          identities: props.identities,
           insufficientBalance: this.checkBalanceAgainstTx(txData),
+          // State actions
+          onTxChange: this.onTxChange.bind(this),
           // Actions
-          buyEth: this.buyEth.bind(this, txParams.from || state.selectedAccount),
+          buyEth: this.buyEth.bind(this, txParams.from || props.selectedAddress),
           sendTransaction: this.sendTransaction.bind(this, txData),
           cancelTransaction: this.cancelTransaction.bind(this, txData),
           signMessage: this.signMessage.bind(this, txData),
+          signPersonalMessage: this.signPersonalMessage.bind(this, txData),
           cancelMessage: this.cancelMessage.bind(this, txData),
+          cancelPersonalMessage: this.cancelPersonalMessage.bind(this, txData),
         }),
 
       ]),
@@ -117,24 +123,35 @@ ConfirmTxScreen.prototype.render = function () {
 }
 
 function currentTxView (opts) {
+  log.info('rendering current tx view')
   const { txData } = opts
-  const { txParams, msgParams } = txData
+  const { txParams, msgParams, type } = txData
 
   if (txParams) {
-    // This is a pending transaction
+    log.debug('txParams detected, rendering pending tx')
     return h(PendingTx, opts)
+
   } else if (msgParams) {
-    // This is a pending message to sign
-    return h(PendingMsg, opts)
+    log.debug('msgParams detected, rendering pending msg')
+
+    if (type === 'eth_sign') {
+      log.debug('rendering eth_sign message')
+      return h(PendingMsg, opts)
+
+    } else if (type === 'personal_sign') {
+      log.debug('rendering personal_sign message')
+      return h(PendingPersonalMsg, opts)
+    }
   }
 }
+
 ConfirmTxScreen.prototype.checkBalanceAgainstTx = function (txData) {
   if (!txData.txParams) return false
-  var state = this.props
-  var address = txData.txParams.from || state.selectedAccount
-  var account = state.accounts[address]
+  var props = this.props
+  var address = txData.txParams.from || props.selectedAddress
+  var account = props.accounts[address]
   var balance = account ? account.balance : '0x0'
-  var maxCost = new BN(txData.maxCost)
+  var maxCost = new BN(txData.maxCost, 16)
 
   var balanceBn = new BN(ethUtil.stripHexPrefix(balance), 16)
   return maxCost.gt(balanceBn)
@@ -145,9 +162,20 @@ ConfirmTxScreen.prototype.buyEth = function (address, event) {
   this.props.dispatch(actions.buyEthView(address))
 }
 
+// Allows the detail view to update the gas calculations,
+// for manual gas controls.
+ConfirmTxScreen.prototype.onTxChange = function (txData) {
+  log.debug(`conf-tx onTxChange triggered with ${JSON.stringify(txData)}`)
+  this.setState({ txData })
+}
+
+// Must default to any local state txData,
+// to allow manual override of gas calculations.
 ConfirmTxScreen.prototype.sendTransaction = function (txData, event) {
   event.stopPropagation()
-  this.props.dispatch(actions.sendTx(txData))
+  const state = this.state || {}
+  const txMeta = state.txData
+  this.props.dispatch(actions.updateAndApproveTx(txMeta || txData))
 }
 
 ConfirmTxScreen.prototype.cancelTransaction = function (txData, event) {
@@ -156,15 +184,31 @@ ConfirmTxScreen.prototype.cancelTransaction = function (txData, event) {
 }
 
 ConfirmTxScreen.prototype.signMessage = function (msgData, event) {
+  log.info('conf-tx.js: signing message')
   var params = msgData.msgParams
   params.metamaskId = msgData.id
   event.stopPropagation()
   this.props.dispatch(actions.signMsg(params))
 }
 
+ConfirmTxScreen.prototype.signPersonalMessage = function (msgData, event) {
+  log.info('conf-tx.js: signing personal message')
+  var params = msgData.msgParams
+  params.metamaskId = msgData.id
+  event.stopPropagation()
+  this.props.dispatch(actions.signPersonalMsg(params))
+}
+
 ConfirmTxScreen.prototype.cancelMessage = function (msgData, event) {
+  log.info('canceling message')
   event.stopPropagation()
   this.props.dispatch(actions.cancelMsg(msgData))
+}
+
+ConfirmTxScreen.prototype.cancelPersonalMessage = function (msgData, event) {
+  log.info('canceling personal message')
+  event.stopPropagation()
+  this.props.dispatch(actions.cancelPersonalMsg(msgData))
 }
 
 ConfirmTxScreen.prototype.goHome = function (event) {
@@ -174,7 +218,7 @@ ConfirmTxScreen.prototype.goHome = function (event) {
 
 function warningIfExists (warning) {
   if (warning &&
-      // Do not display user rejections on this screen:
+     // Do not display user rejections on this screen:
      warning.indexOf('User denied transaction signature') === -1) {
     return h('.error', {
       style: {

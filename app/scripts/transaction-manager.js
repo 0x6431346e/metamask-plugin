@@ -2,6 +2,7 @@ const EventEmitter = require('events')
 const async = require('async')
 const extend = require('xtend')
 const Semaphore = require('semaphore')
+const ObservableStore = require('obs-store')
 const ethUtil = require('ethereumjs-util')
 const BN = require('ethereumjs-util').BN
 const TxProviderUtil = require('./lib/tx-utils')
@@ -10,33 +11,44 @@ const createId = require('./lib/random-id')
 module.exports = class TransactionManager extends EventEmitter {
   constructor (opts) {
     super()
-    this.txList = opts.txList || []
-    this._setTxList = opts.setTxList
+    this.store = new ObservableStore(extend({
+      transactions: [],
+    }, opts.initState))
+    this.memStore = new ObservableStore({})
+    this.networkStore = opts.networkStore || new ObservableStore({})
+    this.preferencesStore = opts.preferencesStore || new ObservableStore({})
     this.txHistoryLimit = opts.txHistoryLimit
-    this.getSelectedAccount = opts.getSelectedAccount
     this.provider = opts.provider
     this.blockTracker = opts.blockTracker
     this.txProviderUtils = new TxProviderUtil(this.provider)
     this.blockTracker.on('block', this.checkForTxInBlock.bind(this))
-    this.getGasMultiplier = opts.getGasMultiplier
-    this.getNetwork = opts.getNetwork
     this.signEthTx = opts.signTransaction
     this.nonceLock = Semaphore(1)
+
+    // memstore is computed from a few different stores
+    this._updateMemstore()
+    this.store.subscribe(() => this._updateMemstore() )
+    this.networkStore.subscribe(() => this._updateMemstore() )
+    this.preferencesStore.subscribe(() => this._updateMemstore() )
   }
 
   getState () {
-    var selectedAccount = this.getSelectedAccount()
-    return {
-      transactions: this.getTxList(),
-      unconfTxs: this.getUnapprovedTxList(),
-      selectedAccountTxList: this.getFilteredTxList({metamaskNetworkId: this.getNetwork(), from: selectedAccount}),
-    }
+    return this.memStore.getState()
   }
 
-//   Returns the tx list
+  getNetwork () {
+    return this.networkStore.getState().network
+  }
+
+  getSelectedAddress () {
+    return this.preferencesStore.getState().selectedAddress
+  }
+
+  // Returns the tx list
   getTxList () {
     let network = this.getNetwork()
-    return this.txList.filter(txMeta => txMeta.metamaskNetworkId === network)
+    let fullTxList = this.store.getState().transactions
+    return fullTxList.filter(txMeta => txMeta.metamaskNetworkId === network)
   }
 
   // Adds a tx to the txlist
@@ -108,7 +120,6 @@ module.exports = class TransactionManager extends EventEmitter {
           id: txId,
           time: time,
           status: 'unapproved',
-          gasMultiplier: this.getGasMultiplier() || 1,
           metamaskNetworkId: this.getNetwork(),
           txParams: txParams,
         }
@@ -126,16 +137,15 @@ module.exports = class TransactionManager extends EventEmitter {
 
   setMaxTxCostAndFee (txMeta) {
     var txParams = txMeta.txParams
-    var gasMultiplier = txMeta.gasMultiplier
     var gasCost = new BN(ethUtil.stripHexPrefix(txParams.gas || txMeta.estimatedGas), 16)
     var gasPrice = new BN(ethUtil.stripHexPrefix(txParams.gasPrice || '0x4a817c800'), 16)
-    gasPrice = gasPrice.mul(new BN(gasMultiplier * 100), 10).div(new BN(100, 10))
     var txFee = gasCost.mul(gasPrice)
     var txValue = new BN(ethUtil.stripHexPrefix(txParams.value || '0x0'), 16)
     var maxCost = txValue.add(txFee)
     txMeta.txFee = txFee
     txMeta.txValue = txValue
     txMeta.maxCost = maxCost
+    txMeta.gasPrice = gasPrice
     this.updateTx(txMeta)
   }
 
@@ -188,7 +198,7 @@ module.exports = class TransactionManager extends EventEmitter {
     let txMeta = this.getTx(txId)
     let txParams = txMeta.txParams
     let fromAddress = txParams.from
-    let ethTx = this.txProviderUtils.buildEthTxFromParams(txParams, txMeta.gasMultiplier)
+    let ethTx = this.txProviderUtils.buildEthTxFromParams(txParams)
     this.signEthTx(ethTx, fromAddress).then(() => {
       this.setTxStatusSigned(txMeta.id)
       cb(null, ethUtil.bufferToHex(ethTx.serialize()))
@@ -239,7 +249,7 @@ module.exports = class TransactionManager extends EventEmitter {
 
   getTxsByMetaData (key, value, txList = this.getTxList()) {
     return txList.filter((txMeta) => {
-      if (key in txMeta.txParams) {
+      if (txMeta.txParams[key]) {
         return txMeta.txParams[key] === value
       } else {
         return txMeta[key] === value
@@ -343,7 +353,7 @@ module.exports = class TransactionManager extends EventEmitter {
     txMeta.status = status
     this.emit(`${txMeta.id}:${status}`, txId)
     if (status === 'submitted' || status === 'rejected') {
-      this.emit(`${txMeta.id}:finished`, status)
+      this.emit(`${txMeta.id}:finished`, txMeta)
     }
     this.updateTx(txMeta)
     this.emit('updateBadge')
@@ -351,9 +361,17 @@ module.exports = class TransactionManager extends EventEmitter {
 
   // Saves the new/updated txList.
   // Function is intended only for internal use
-  _saveTxList (txList) {
-    this.txList = txList
-    this._setTxList(txList)
+  _saveTxList (transactions) {
+    this.store.updateState({ transactions })
+  }
+
+  _updateMemstore () {
+    const unapprovedTxs = this.getUnapprovedTxList()
+    const selectedAddressTxList = this.getFilteredTxList({
+      from: this.getSelectedAddress(),
+      metamaskNetworkId: this.getNetwork(),
+    })
+    this.memStore.updateState({ unapprovedTxs, selectedAddressTxList })
   }
 }
 

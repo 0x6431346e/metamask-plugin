@@ -5,7 +5,6 @@ const h = require('react-hyperscript')
 const actions = require('./actions')
 const ReactCSSTransitionGroup = require('react-addons-css-transition-group')
 // init
-const DisclaimerScreen = require('./first-time/disclaimer')
 const InitializeMenuScreen = require('./first-time/init-menu')
 const NewKeyChainScreen = require('./new-keychain')
 // unlock
@@ -43,7 +42,7 @@ function mapStateToProps (state) {
   return {
     // state from plugin
     isLoading: state.appState.isLoading,
-    isDisclaimerConfirmed: state.metamask.isDisclaimerConfirmed,
+    loadingMessage: state.appState.loadingMessage,
     noActiveNotices: state.metamask.noActiveNotices,
     isInitialized: state.metamask.isInitialized,
     isUnlocked: state.metamask.isUnlocked,
@@ -51,8 +50,8 @@ function mapStateToProps (state) {
     activeAddress: state.appState.activeAddress,
     transForward: state.appState.transForward,
     seedWords: state.metamask.seedWords,
-    unconfTxs: state.metamask.unconfTxs,
-    unconfMsgs: state.metamask.unconfMsgs,
+    unapprovedTxs: state.metamask.unapprovedTxs,
+    unapprovedMsgs: state.metamask.unapprovedMsgs,
     menuOpen: state.appState.menuOpen,
     network: state.metamask.network,
     provider: state.metamask.provider,
@@ -64,7 +63,8 @@ function mapStateToProps (state) {
 
 App.prototype.render = function () {
   var props = this.props
-  const { isLoading, transForward } = props
+  const { isLoading, loadingMessage, transForward } = props
+  log.debug('Main ui render function')
 
   return (
 
@@ -76,7 +76,7 @@ App.prototype.render = function () {
       },
     }, [
 
-      h(LoadingIndicator, { isLoading }),
+      h(LoadingIndicator, { isLoading, loadingMessage }),
 
       // app bar
       this.renderAppBar(),
@@ -123,9 +123,9 @@ App.prototype.renderAppBar = function () {
           background: props.isUnlocked ? 'white' : 'none',
           height: '36px',
           position: 'relative',
-          zIndex: 2,
+          zIndex: 10,
         },
-      }, props.isUnlocked && [
+      }, [
 
         h('div', {
           style: {
@@ -160,14 +160,14 @@ App.prototype.renderAppBar = function () {
         ]),
 
         // metamask name
-        h('h1', {
+        props.isUnlocked && h('h1', {
           style: {
             position: 'relative',
             left: '9px',
           },
         }, 'MetaMask'),
 
-        h('div', {
+        props.isUnlocked && h('div', {
           style: {
             display: 'flex',
             flexDirection: 'row',
@@ -176,7 +176,7 @@ App.prototype.renderAppBar = function () {
         }, [
 
           // small accounts nav
-          h(Tooltip, { title: 'Switch Accounts' }, [
+          props.isUnlocked && h(Tooltip, { title: 'Switch Accounts' }, [
             h('img.cursor-pointer.color-orange', {
               src: 'images/switch_acc.svg',
               style: {
@@ -191,7 +191,7 @@ App.prototype.renderAppBar = function () {
           ]),
 
           // hamburger
-          h(SandwichExpando, {
+          props.isUnlocked && h(SandwichExpando, {
             width: 16,
             barHeight: 2,
             padding: 0,
@@ -263,7 +263,7 @@ App.prototype.renderNetworkDropdown = function () {
 
     this.renderCustomOption(props.provider),
 
-    h(DropMenuItem, {
+    props.isUnlocked && h(DropMenuItem, {
       label: 'Custom RPC',
       closeMenu: () => this.setState({ isNetworkMenuOpen: false }),
       action: () => this.props.dispatch(actions.showConfigPage()),
@@ -348,25 +348,43 @@ App.prototype.renderBackButton = function (style, justArrow = false) {
 }
 
 App.prototype.renderPrimary = function () {
+  log.debug('rendering primary')
   var props = this.props
 
-  if (!props.isDisclaimerConfirmed) {
-    return h(DisclaimerScreen, {key: 'disclaimerScreen'})
+  // notices
+  if (!props.noActiveNotices) {
+    log.debug('rendering notice screen for unread notices.')
+    return h(NoticeScreen, {
+      notice: props.lastUnreadNotice,
+      key: 'NoticeScreen',
+      onConfirm: () => props.dispatch(actions.markNoticeRead(props.lastUnreadNotice)),
+    })
+  } else if (props.lostAccounts && props.lostAccounts.length > 0) {
+    log.debug('rendering notice screen for lost accounts view.')
+    return h(NoticeScreen, {
+      notice: generateLostAccountsNotice(props.lostAccounts),
+      key: 'LostAccountsNotice',
+      onConfirm: () => props.dispatch(actions.markAccountsFound()),
+    })
   }
 
   if (props.seedWords) {
+    log.debug('rendering seed words')
     return h(HDCreateVaultComplete, {key: 'HDCreateVaultComplete'})
   }
 
   // show initialize screen
   if (!props.isInitialized || props.forgottenPassword) {
     // show current view
+    log.debug('rendering an initialize screen')
     switch (props.currentView.name) {
 
       case 'restoreVault':
+        log.debug('rendering restore vault screen')
         return h(HDRestoreVaultScreen, {key: 'HDRestoreVaultScreen'})
 
       default:
+        log.debug('rendering menu screen')
         return h(InitializeMenuScreen, {key: 'menuScreenInit'})
     }
   }
@@ -376,62 +394,60 @@ App.prototype.renderPrimary = function () {
     switch (props.currentView.name) {
 
       case 'restoreVault':
+        log.debug('rendering restore vault screen')
         return h(HDRestoreVaultScreen, {key: 'HDRestoreVaultScreen'})
 
       default:
+        log.debug('rendering locked screen')
         return h(UnlockScreen, {key: 'locked'})
     }
-  }
-
-  // notices
-  if (!props.noActiveNotices) {
-    return h(NoticeScreen, {
-      notice: props.lastUnreadNotice,
-      key: 'NoticeScreen',
-      onConfirm: () => props.dispatch(actions.markNoticeRead(props.lastUnreadNotice)),
-    })
-  } else if (props.lostAccounts && props.lostAccounts.length > 0) {
-    return h(NoticeScreen, {
-      notice: generateLostAccountsNotice(props.lostAccounts),
-      key: 'LostAccountsNotice',
-      onConfirm: () => props.dispatch(actions.markAccountsFound()),
-    })
   }
 
   // show current view
   switch (props.currentView.name) {
 
     case 'accounts':
+      log.debug('rendering accounts screen')
       return h(AccountsScreen, {key: 'accounts'})
 
     case 'accountDetail':
+      log.debug('rendering account detail screen')
       return h(AccountDetailScreen, {key: 'account-detail'})
 
     case 'sendTransaction':
+      log.debug('rendering send tx screen')
       return h(SendTransactionScreen, {key: 'send-transaction'})
 
     case 'newKeychain':
+      log.debug('rendering new keychain screen')
       return h(NewKeyChainScreen, {key: 'new-keychain'})
 
     case 'confTx':
+      log.debug('rendering confirm tx screen')
       return h(ConfirmTxScreen, {key: 'confirm-tx'})
 
     case 'config':
+      log.debug('rendering config screen')
       return h(ConfigScreen, {key: 'config'})
 
     case 'import-menu':
+      log.debug('rendering import screen')
       return h(Import, {key: 'import-menu'})
 
     case 'reveal-seed-conf':
+      log.debug('rendering reveal seed confirmation screen')
       return h(RevealSeedConfirmation, {key: 'reveal-seed-conf'})
 
     case 'info':
+      log.debug('rendering info screen')
       return h(InfoScreen, {key: 'info'})
 
     case 'buyEth':
+      log.debug('rendering buy ether screen')
       return h(BuyView, {key: 'buyEthView'})
 
     case 'qr':
+      log.debug('rendering show qr screen')
       return h('div', {
         style: {
           position: 'absolute',
@@ -459,6 +475,7 @@ App.prototype.renderPrimary = function () {
       ])
 
     default:
+      log.debug('rendering default, account detail screen')
       return h(AccountDetailScreen, {key: 'account-detail'})
   }
 }

@@ -1,45 +1,46 @@
 const EventEmitter = require('events').EventEmitter
-const hardCodedNotices = require('../../development/notices.json')
+const extend = require('xtend')
+const ObservableStore = require('obs-store')
+const hardCodedNotices = require('../../notices/notices.json')
 
 module.exports = class NoticeController extends EventEmitter {
 
   constructor (opts) {
     super()
-    this.configManager = opts.configManager
     this.noticePoller = null
-  }
-
-  getState () {
-    var lastUnreadNotice = this.getLatestUnreadNotice()
-
-    return {
-      lastUnreadNotice: lastUnreadNotice,
-      noActiveNotices: !lastUnreadNotice,
-    }
+    const initState = extend({
+      noticesList: [],
+    }, opts.initState)
+    this.store = new ObservableStore(initState)
+    this.memStore = new ObservableStore({})
+    this.store.subscribe(() => this._updateMemstore())
   }
 
   getNoticesList () {
-    var data = this.configManager.getData()
-    if ('noticesList' in data) {
-      return data.noticesList
-    } else {
-      return []
-    }
+    return this.store.getState().noticesList
   }
 
-  setNoticesList (list) {
-    var data = this.configManager.getData()
-    data.noticesList = list
-    this.configManager.setData(data)
+  getUnreadNotices () {
+    const notices = this.getNoticesList()
+    return notices.filter((notice) => notice.read === false)
+  }
+
+  getLatestUnreadNotice () {
+    const unreadNotices = this.getUnreadNotices()
+    return unreadNotices[unreadNotices.length - 1]
+  }
+
+  setNoticesList (noticesList) {
+    this.store.updateState({ noticesList })
     return Promise.resolve(true)
   }
 
-  markNoticeRead (notice, cb) {
+  markNoticeRead (noticeToMark, cb) {
     cb = cb || function (err) { if (err) throw err }
     try {
       var notices = this.getNoticesList()
-      var id = notice.id
-      notices[id].read = true
+      var index = notices.findIndex((currentNotice) => currentNotice.id === noticeToMark.id)
+      notices[index].read = true
       this.setNoticesList(notices)
       const latestNotice = this.getLatestUnreadNotice()
       cb(null, latestNotice)
@@ -54,14 +55,6 @@ module.exports = class NoticeController extends EventEmitter {
       var combinedNotices = this._mergeNotices(oldNotices, newNotices)
       return Promise.resolve(this.setNoticesList(combinedNotices))
     })
-  }
-
-  getLatestUnreadNotice () {
-    var notices = this.getNoticesList()
-    var filteredNotices = notices.filter((notice) => {
-      return notice.read === false
-    })
-    return filteredNotices[filteredNotices.length - 1]
   }
 
   startPolling () {
@@ -92,5 +85,10 @@ module.exports = class NoticeController extends EventEmitter {
     return Promise.resolve(hardCodedNotices)
   }
 
+  _updateMemstore () {
+    const lastUnreadNotice = this.getLatestUnreadNotice()
+    const noActiveNotices = !lastUnreadNotice
+    this.memStore.updateState({ lastUnreadNotice, noActiveNotices })
+  }
 
 }

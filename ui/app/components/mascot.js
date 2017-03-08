@@ -36,6 +36,7 @@ Mascot.prototype.render = function () {
     src: '/images/icon-512.png',
     style: {
       marginBottom: 64,
+      zIndex: 0,
     },
   })
 }

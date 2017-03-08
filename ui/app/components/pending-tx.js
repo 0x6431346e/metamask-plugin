@@ -1,9 +1,18 @@
 const Component = require('react').Component
+const connect = require('react-redux').connect
 const h = require('react-hyperscript')
 const inherits = require('util').inherits
 const PendingTxDetails = require('./pending-tx-details')
+const extend = require('xtend')
+const actions = require('../actions')
 
-module.exports = PendingTx
+module.exports = connect(mapStateToProps)(PendingTx)
+
+function mapStateToProps (state) {
+  return {
+
+  }
+}
 
 inherits(PendingTx, Component)
 function PendingTx () {
@@ -11,8 +20,9 @@ function PendingTx () {
 }
 
 PendingTx.prototype.render = function () {
-  var state = this.props
-  var txData = state.txData
+  const props = this.props
+  const newProps = extend(props, {ref: 'details'})
+  const txData = props.txData
 
   return (
 
@@ -21,7 +31,7 @@ PendingTx.prototype.render = function () {
     }, [
 
       // tx info
-      h(PendingTxDetails, state),
+      h(PendingTxDetails, newProps),
 
       h('style', `
         .conf-buttons button {
@@ -39,7 +49,7 @@ PendingTx.prototype.render = function () {
         }, 'Transaction Error. Exception thrown in contract code.')
       : null,
 
-      state.insufficientBalance ?
+      props.insufficientBalance ?
         h('span.error', {
           style: {
             marginLeft: 50,
@@ -57,19 +67,31 @@ PendingTx.prototype.render = function () {
         },
       }, [
 
-        state.insufficientBalance ?
-          h('button.btn-green', {
-            onClick: state.buyEth,
+        props.insufficientBalance ?
+          h('button', {
+            onClick: props.buyEth,
           }, 'Buy Ether')
         : null,
 
-        h('button.confirm', {
-          disabled: state.insufficientBalance,
-          onClick: state.sendTransaction,
+        h('button', {
+          onClick: () => {
+            this.refs.details.resetGasFields()
+          },
+        }, 'Reset'),
+
+        h('button.confirm.btn-green', {
+          disabled: props.insufficientBalance,
+          onClick: (txData, event) => {
+            if (this.refs.details.verifyGasParams()) {
+              props.sendTransaction(txData, event)
+            } else {
+              this.props.dispatch(actions.displayWarning('Invalid Gas Parameters'))
+            }
+          },
         }, 'Accept'),
 
         h('button.cancel.btn-red', {
-          onClick: state.cancelTransaction,
+          onClick: props.cancelTransaction,
         }, 'Reject'),
       ]),
     ])

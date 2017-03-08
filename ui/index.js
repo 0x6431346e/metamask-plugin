@@ -6,6 +6,11 @@ const configureStore = require('./app/store')
 const txHelper = require('./lib/tx-helper')
 module.exports = launchApp
 
+let debugMode = window.METAMASK_DEBUG
+const log = require('loglevel')
+window.log = log
+log.setLevel(debugMode ? 'debug' : 'warn')
+
 function launchApp (opts) {
   var accountManager = opts.accountManager
   actions._setBackgroundConnection(accountManager)
@@ -32,8 +37,8 @@ function startApp (metamaskState, accountManager, opts) {
   })
 
   // if unconfirmed txs, start on txConf page
-  var unconfirmedTxsAll = txHelper(metamaskState.unconfTxs, metamaskState.unconfMsgs, metamaskState.network)
-  if (unconfirmedTxsAll.length > 0) {
+  var unapprovedTxsAll = txHelper(metamaskState.unapprovedTxs, metamaskState.unapprovedMsgs, metamaskState.unapprovedPersonalMsgs, metamaskState.network)
+  if (unapprovedTxsAll.length > 0) {
     store.dispatch(actions.showConfTxPage())
   }
 
