@@ -234,7 +234,7 @@ App.prototype.renderNetworkDropdown = function () {
       .drop-menu-item i { margin: 11px; }
     `),
 
-    h(DropMenuItem, {
+    /* h(DropMenuItem, {
       label: 'Main Ethereum Network',
       closeMenu: () => this.setState({ isNetworkMenuOpen: false }),
       action: () => props.dispatch(actions.setProviderType('mainnet')),
@@ -250,7 +250,7 @@ App.prototype.renderNetworkDropdown = function () {
       icon: h('.menu-icon.red-dot'),
       activeNetworkRender: props.network,
       provider: props.provider,
-    }),
+    }), */
 
     h(DropMenuItem, {
       label: 'Localhost 8545',
