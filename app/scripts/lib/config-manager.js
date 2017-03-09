@@ -5,6 +5,7 @@ const normalize = require('./sig-util').normalize
 const TESTNET_RPC = MetamaskConfig.network.testnet
 const MAINNET_RPC = MetamaskConfig.network.mainnet
 const MORDEN_RPC = MetamaskConfig.network.morden
+const ARAGON_KOVAN_RPC_URL = MetamaskConfig.network.kovan
 
 /* The config-manager is a convenience object
  * wrapping a pojo-migrator.
@@ -58,8 +59,12 @@ ConfigManager.prototype.useEtherscanProvider = function () {
 }
 
 ConfigManager.prototype.getProvider = function () {
-  var config = this.getConfig()
-  return config.provider
+  // var config = this.getConfig()
+  // return config.provider
+  return {
+    type: 'rpc',
+    rpcTarget: ARAGON_KOVAN_RPC_URL,
+  }
 }
 
 ConfigManager.prototype.setData = function (data) {
