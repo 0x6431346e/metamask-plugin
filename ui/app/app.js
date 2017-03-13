@@ -58,12 +58,14 @@ function mapStateToProps (state) {
     forgottenPassword: state.appState.forgottenPassword,
     lastUnreadNotice: state.metamask.lastUnreadNotice,
     lostAccounts: state.metamask.lostAccounts,
+    frequentRpcList: state.metamask.frequentRpcList || [],
   }
 }
 
 App.prototype.render = function () {
   var props = this.props
   const { isLoading, loadingMessage, transForward } = props
+  log.debug('Main ui render function')
 
   return (
 
@@ -210,6 +212,7 @@ App.prototype.renderAppBar = function () {
 
 App.prototype.renderNetworkDropdown = function () {
   const props = this.props
+  const rpcList = props.frequentRpcList
   const state = this.state || {}
   const isOpen = state.isNetworkMenuOpen
 
@@ -255,12 +258,13 @@ App.prototype.renderNetworkDropdown = function () {
     h(DropMenuItem, {
       label: 'Localhost 8545',
       closeMenu: () => this.setState({ isNetworkMenuOpen: false }),
-      action: () => props.dispatch(actions.setRpcTarget('http://localhost:8545')),
+      action: () => props.dispatch(actions.setDefaultRpcTarget(rpcList)),
       icon: h('i.fa.fa-question-circle.fa-lg'),
       activeNetworkRender: props.provider.rpcTarget,
     }),
 
     this.renderCustomOption(props.provider),
+    this.renderCommonRpc(rpcList, props.provider),
 
     props.isUnlocked && h(DropMenuItem, {
       label: 'Custom RPC',
@@ -347,16 +351,19 @@ App.prototype.renderBackButton = function (style, justArrow = false) {
 }
 
 App.prototype.renderPrimary = function () {
+  log.debug('rendering primary')
   var props = this.props
 
   // notices
-  if (!props.noActiveNotices && !global.METAMASK_DEBUG) {
+  if (!props.noActiveNotices) {
+    log.debug('rendering notice screen for unread notices.')
     return h(NoticeScreen, {
       notice: props.lastUnreadNotice,
       key: 'NoticeScreen',
       onConfirm: () => props.dispatch(actions.markNoticeRead(props.lastUnreadNotice)),
     })
   } else if (props.lostAccounts && props.lostAccounts.length > 0) {
+    log.debug('rendering notice screen for lost accounts view.')
     return h(NoticeScreen, {
       notice: generateLostAccountsNotice(props.lostAccounts),
       key: 'LostAccountsNotice',
@@ -365,18 +372,22 @@ App.prototype.renderPrimary = function () {
   }
 
   if (props.seedWords) {
+    log.debug('rendering seed words')
     return h(HDCreateVaultComplete, {key: 'HDCreateVaultComplete'})
   }
 
   // show initialize screen
   if (!props.isInitialized || props.forgottenPassword) {
     // show current view
+    log.debug('rendering an initialize screen')
     switch (props.currentView.name) {
 
       case 'restoreVault':
+        log.debug('rendering restore vault screen')
         return h(HDRestoreVaultScreen, {key: 'HDRestoreVaultScreen'})
 
       default:
+        log.debug('rendering menu screen')
         return h(InitializeMenuScreen, {key: 'menuScreenInit'})
     }
   }
@@ -386,9 +397,11 @@ App.prototype.renderPrimary = function () {
     switch (props.currentView.name) {
 
       case 'restoreVault':
+        log.debug('rendering restore vault screen')
         return h(HDRestoreVaultScreen, {key: 'HDRestoreVaultScreen'})
 
       default:
+        log.debug('rendering locked screen')
         return h(UnlockScreen, {key: 'locked'})
     }
   }
@@ -397,36 +410,47 @@ App.prototype.renderPrimary = function () {
   switch (props.currentView.name) {
 
     case 'accounts':
+      log.debug('rendering accounts screen')
       return h(AccountsScreen, {key: 'accounts'})
 
     case 'accountDetail':
+      log.debug('rendering account detail screen')
       return h(AccountDetailScreen, {key: 'account-detail'})
 
     case 'sendTransaction':
+      log.debug('rendering send tx screen')
       return h(SendTransactionScreen, {key: 'send-transaction'})
 
     case 'newKeychain':
+      log.debug('rendering new keychain screen')
       return h(NewKeyChainScreen, {key: 'new-keychain'})
 
     case 'confTx':
+      log.debug('rendering confirm tx screen')
       return h(ConfirmTxScreen, {key: 'confirm-tx'})
 
     case 'config':
+      log.debug('rendering config screen')
       return h(ConfigScreen, {key: 'config'})
 
     case 'import-menu':
+      log.debug('rendering import screen')
       return h(Import, {key: 'import-menu'})
 
     case 'reveal-seed-conf':
+      log.debug('rendering reveal seed confirmation screen')
       return h(RevealSeedConfirmation, {key: 'reveal-seed-conf'})
 
     case 'info':
+      log.debug('rendering info screen')
       return h(InfoScreen, {key: 'info'})
 
     case 'buyEth':
+      log.debug('rendering buy ether screen')
       return h(BuyView, {key: 'buyEthView'})
 
     case 'qr':
+      log.debug('rendering show qr screen')
       return h('div', {
         style: {
           position: 'absolute',
@@ -454,6 +478,7 @@ App.prototype.renderPrimary = function () {
       ])
 
     default:
+      log.debug('rendering default, account detail screen')
       return h(AccountDetailScreen, {key: 'account-detail'})
   }
 }
@@ -474,6 +499,12 @@ App.prototype.renderCustomOption = function (provider) {
   const { rpcTarget, type } = provider
   if (type !== 'rpc') return null
 
+  // Concatenate long URLs
+  let label = rpcTarget
+  if (rpcTarget.length > 31) {
+    label = label.substr(0, 34) + '...'
+  }
+
   switch (rpcTarget) {
 
     case 'http://localhost:8545':
@@ -481,10 +512,32 @@ App.prototype.renderCustomOption = function (provider) {
 
     default:
       return h(DropMenuItem, {
-        label: `${rpcTarget}`,
+        label,
+        key: rpcTarget,
         closeMenu: () => this.setState({ isNetworkMenuOpen: false }),
         icon: h('i.fa.fa-question-circle.fa-lg'),
         activeNetworkRender: 'custom',
       })
   }
+}
+
+App.prototype.renderCommonRpc = function (rpcList, provider) {
+  const { rpcTarget } = provider
+  const props = this.props
+
+  return rpcList.map((rpc) => {
+    if ((rpc === 'http://localhost:8545') || (rpc === rpcTarget)) {
+      return null
+    } else {
+      return h(DropMenuItem, {
+        label: rpc,
+        key: rpc,
+        closeMenu: () => this.setState({ isNetworkMenuOpen: false }),
+        action: () => props.dispatch(actions.setRpcTarget(rpc)),
+        icon: h('i.fa.fa-question-circle.fa-lg'),
+        activeNetworkRender: rpc,
+      })
+    }
+  })
+
 }

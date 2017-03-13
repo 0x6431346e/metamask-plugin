@@ -2,19 +2,20 @@ const EventEmitter = require('events')
 const ObservableStore = require('obs-store')
 const ethUtil = require('ethereumjs-util')
 const createId = require('./random-id')
+const hexRe = /^[0-9A-Fa-f]+$/g
 
 
-module.exports = class MessageManager extends EventEmitter{
+module.exports = class PersonalMessageManager extends EventEmitter{
   constructor (opts) {
     super()
     this.memStore = new ObservableStore({
-      unapprovedMsgs: {},
-      unapprovedMsgCount: 0,
+      unapprovedPersonalMsgs: {},
+      unapprovedPersonalMsgCount: 0,
     })
     this.messages = []
   }
 
-  get unapprovedMsgCount () {
+  get unapprovedPersonalMsgCount () {
     return Object.keys(this.getUnapprovedMsgs()).length
   }
 
@@ -24,7 +25,8 @@ module.exports = class MessageManager extends EventEmitter{
   }
 
   addUnapprovedMessage (msgParams) {
-    msgParams.data = normalizeMsgData(msgParams.data)
+    log.debug(`PersonalMessageManager addUnapprovedMessage: ${JSON.stringify(msgParams)}`)
+    msgParams.data = this.normalizeMsgData(msgParams.data)
     // create txData obj with parameters and meta data
     var time = (new Date()).getTime()
     var msgId = createId()
@@ -33,7 +35,7 @@ module.exports = class MessageManager extends EventEmitter{
       msgParams: msgParams,
       time: time,
       status: 'unapproved',
-      type: 'eth_sign',
+      type: 'personal_sign',
     }
     this.addMsg(msgData)
 
@@ -82,7 +84,7 @@ module.exports = class MessageManager extends EventEmitter{
 
   _setMsgStatus (msgId, status) {
     const msg = this.getMsg(msgId)
-    if (!msg) throw new Error('MessageManager - Message not found for id: "${msgId}".')
+    if (!msg) throw new Error('PersonalMessageManager - Message not found for id: "${msgId}".')
     msg.status = status
     this._updateMsg(msg)
     this.emit(`${msgId}:${status}`, msg)
@@ -100,20 +102,24 @@ module.exports = class MessageManager extends EventEmitter{
   }
 
   _saveMsgList () {
-    const unapprovedMsgs = this.getUnapprovedMsgs()
-    const unapprovedMsgCount = Object.keys(unapprovedMsgs).length
-    this.memStore.updateState({ unapprovedMsgs, unapprovedMsgCount })
+    const unapprovedPersonalMsgs = this.getUnapprovedMsgs()
+    const unapprovedPersonalMsgCount = Object.keys(unapprovedPersonalMsgs).length
+    this.memStore.updateState({ unapprovedPersonalMsgs, unapprovedPersonalMsgCount })
     this.emit('updateBadge')
   }
 
-}
+  normalizeMsgData(data) {
+    try {
+      const stripped = ethUtil.stripHexPrefix(data)
+      if (stripped.match(hexRe)) {
+        return ethUtil.addHexPrefix(stripped)
+      }
+    } catch (e) {
+      log.debug(`Message was not hex encoded, interpreting as utf8.`)
+    }
 
-function normalizeMsgData(data) {
-  if (data.slice(0, 2) === '0x') {
-    // data is already hex
-    return data
-  } else {
-    // data is unicode, convert to hex
     return ethUtil.bufferToHex(new Buffer(data, 'utf8'))
   }
+
 }
+

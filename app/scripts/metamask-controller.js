@@ -11,11 +11,12 @@ const streamIntoProvider = require('web3-stream-provider/handler')
 const MetaMaskProvider = require('web3-provider-engine/zero.js')
 const setupMultiplex = require('./lib/stream-utils.js').setupMultiplex
 const KeyringController = require('./keyring-controller')
-const PreferencesController = require('./lib/controllers/preferences')
-const CurrencyController = require('./lib/controllers/currency')
+const PreferencesController = require('./controllers/preferences')
+const CurrencyController = require('./controllers/currency')
 const NoticeController = require('./notice-controller')
-const ShapeShiftController = require('./lib/controllers/shapeshift')
+const ShapeShiftController = require('./controllers/shapeshift')
 const MessageManager = require('./lib/message-manager')
+const PersonalMessageManager = require('./lib/personal-message-manager')
 const TxManager = require('./transaction-manager')
 const ConfigManager = require('./lib/config-manager')
 const extension = require('./lib/extension')
@@ -105,6 +106,7 @@ module.exports = class MetamaskController extends EventEmitter {
 
     this.lookupNetwork()
     this.messageManager = new MessageManager()
+    this.personalMessageManager = new PersonalMessageManager()
     this.publicConfigStore = this.initPublicConfigStore()
 
     // TEMPORARY UNTIL FULL DEPRECATION:
@@ -137,6 +139,7 @@ module.exports = class MetamaskController extends EventEmitter {
     this.ethStore.subscribe(this.sendUpdate.bind(this))
     this.txManager.memStore.subscribe(this.sendUpdate.bind(this))
     this.messageManager.memStore.subscribe(this.sendUpdate.bind(this))
+    this.personalMessageManager.memStore.subscribe(this.sendUpdate.bind(this))
     this.keyringController.memStore.subscribe(this.sendUpdate.bind(this))
     this.preferencesController.store.subscribe(this.sendUpdate.bind(this))
     this.currencyController.store.subscribe(this.sendUpdate.bind(this))
@@ -149,6 +152,7 @@ module.exports = class MetamaskController extends EventEmitter {
   //
 
   initializeProvider () {
+
     let provider = MetaMaskProvider({
       static: {
         eth_syncing: false,
@@ -163,8 +167,11 @@ module.exports = class MetamaskController extends EventEmitter {
       },
       // tx signing
       processTransaction: (txParams, cb) => this.newUnapprovedTransaction(txParams, cb),
-      // msg signing
+      // old style msg signing
       processMessage: this.newUnsignedMessage.bind(this),
+
+      // new style msg signing
+      processPersonalMessage: this.newUnsignedPersonalMessage.bind(this),
     })
     return provider
   }
@@ -209,6 +216,7 @@ module.exports = class MetamaskController extends EventEmitter {
       this.ethStore.getState(),
       this.txManager.memStore.getState(),
       this.messageManager.memStore.getState(),
+      this.personalMessageManager.memStore.getState(),
       this.keyringController.memStore.getState(),
       this.preferencesController.store.getState(),
       this.currencyController.store.getState(),
@@ -231,17 +239,14 @@ module.exports = class MetamaskController extends EventEmitter {
     const keyringController = this.keyringController
     const preferencesController = this.preferencesController
     const txManager = this.txManager
-    const messageManager = this.messageManager
     const noticeController = this.noticeController
 
     return {
       // etc
       getState:              (cb) => cb(null, this.getState()),
-      setRpcTarget:          this.setRpcTarget.bind(this),
       setProviderType:       this.setProviderType.bind(this),
       useEtherscanProvider:  this.useEtherscanProvider.bind(this),
       setCurrentCurrency:    this.setCurrentCurrency.bind(this),
-      setGasMultiplier:      this.setGasMultiplier.bind(this),
       markAccountsFound:     this.markAccountsFound.bind(this),
       // coinbase
       buyEth: this.buyEth.bind(this),
@@ -259,6 +264,8 @@ module.exports = class MetamaskController extends EventEmitter {
 
       // PreferencesController
       setSelectedAddress:        nodeify(preferencesController.setSelectedAddress).bind(preferencesController),
+      setDefaultRpc:             nodeify(this.setDefaultRpc).bind(this),
+      setCustomRpc:              nodeify(this.setCustomRpc).bind(this),
 
       // KeyringController
       setLocked:                 nodeify(keyringController.setLocked).bind(keyringController),
@@ -269,12 +276,17 @@ module.exports = class MetamaskController extends EventEmitter {
       exportAccount:             nodeify(keyringController.exportAccount).bind(keyringController),
 
       // txManager
-      approveTransaction:    txManager.approveTransaction.bind(txManager),
-      cancelTransaction:     txManager.cancelTransaction.bind(txManager),
+      approveTransaction:          txManager.approveTransaction.bind(txManager),
+      cancelTransaction:           txManager.cancelTransaction.bind(txManager),
+      updateAndApproveTransaction: this.updateAndApproveTx.bind(this),
 
       // messageManager
-      signMessage:           this.signMessage.bind(this),
-      cancelMessage:         messageManager.rejectMsg.bind(messageManager),
+      signMessage:           nodeify(this.signMessage).bind(this),
+      cancelMessage:         this.cancelMessage.bind(this),
+
+      // personalMessageManager
+      signPersonalMessage:   nodeify(this.signPersonalMessage).bind(this),
+      cancelPersonalMessage:         this.cancelPersonalMessage.bind(this),
 
       // notices
       checkNotices:   noticeController.updateNoticesList.bind(noticeController),
@@ -396,20 +408,21 @@ module.exports = class MetamaskController extends EventEmitter {
   //
 
   newUnapprovedTransaction (txParams, cb) {
+    log.debug(`MetaMaskController newUnapprovedTransaction ${JSON.stringify(txParams)}`)
     const self = this
     self.txManager.addUnapprovedTransaction(txParams, (err, txMeta) => {
       if (err) return cb(err)
       self.sendUpdate()
       self.opts.showUnapprovedTx(txMeta)
       // listen for tx completion (success, fail)
-      self.txManager.once(`${txMeta.id}:finished`, (status) => {
-        switch (status) {
+      self.txManager.once(`${txMeta.id}:finished`, (completedTx) => {
+        switch (completedTx.status) {
           case 'submitted':
-            return cb(null, txMeta.hash)
+            return cb(null, completedTx.hash)
           case 'rejected':
             return cb(new Error('MetaMask Tx Signature: User denied transaction signature.'))
           default:
-            return cb(new Error(`MetaMask Tx Signature: Unknown problem: ${JSON.stringify(txMeta.txParams)}`))
+            return cb(new Error(`MetaMask Tx Signature: Unknown problem: ${JSON.stringify(completedTx.txParams)}`))
         }
       })
     })
@@ -424,6 +437,77 @@ module.exports = class MetamaskController extends EventEmitter {
         case 'signed':
           return cb(null, data.rawSig)
         case 'rejected':
+          return cb(new Error('MetaMask Message Signature: User denied message signature.'))
+        default:
+          return cb(new Error(`MetaMask Message Signature: Unknown problem: ${JSON.stringify(msgParams)}`))
+      }
+    })
+  }
+
+  newUnsignedPersonalMessage (msgParams, cb) {
+    if (!msgParams.from) {
+      return cb(new Error('MetaMask Message Signature: from field is required.'))
+    }
+
+    let msgId = this.personalMessageManager.addUnapprovedMessage(msgParams)
+    this.sendUpdate()
+    this.opts.showUnconfirmedMessage()
+    this.personalMessageManager.once(`${msgId}:finished`, (data) => {
+      switch (data.status) {
+        case 'signed':
+          return cb(null, data.rawSig)
+        case 'rejected':
+          return cb(new Error('MetaMask Message Signature: User denied message signature.'))
+        default:
+          return cb(new Error(`MetaMask Message Signature: Unknown problem: ${JSON.stringify(msgParams)}`))
+      }
+    })
+  }
+
+  updateAndApproveTx(txMeta, cb) {
+    log.debug(`MetaMaskController - updateAndApproveTx: ${JSON.stringify(txMeta)}`)
+    const txManager = this.txManager
+    txManager.updateTx(txMeta)
+    txManager.approveTransaction(txMeta.id, cb)
+  }
+
+  signMessage (msgParams, cb) {
+    log.info('MetaMaskController - signMessage')
+    const msgId = msgParams.metamaskId
+
+    // sets the status op the message to 'approved'
+    // and removes the metamaskId for signing
+    return this.messageManager.approveMessage(msgParams)
+    .then((cleanMsgParams) => {
+      // signs the message
+      return this.keyringController.signMessage(cleanMsgParams)
+    })
+    .then((rawSig) => {
+      // tells the listener that the message has been signed
+      // and can be returned to the dapp
+      this.messageManager.setMsgStatusSigned(msgId, rawSig)
+      return this.getState()
+    })
+  }
+
+  cancelMessage(msgId, cb) {
+    const messageManager = this.messageManager
+    messageManager.rejectMsg(msgId)
+    if (cb && typeof cb === 'function') {
+      cb(null, this.getState())
+    }
+  }
+
+  // Prefixed Style Message Signing Methods:
+  approvePersonalMessage (msgParams, cb) {
+    let msgId = this.personalMessageManager.addUnapprovedMessage(msgParams)
+    this.sendUpdate()
+    this.opts.showUnconfirmedMessage()
+    this.personalMessageManager.once(`${msgId}:finished`, (data) => {
+      switch (data.status) {
+        case 'signed':
+          return cb(null, data.rawSig)
+        case 'rejected':
           return cb(new Error('MetaMask Message Signature: User denied transaction signature.'))
         default:
           return cb(new Error(`MetaMask Message Signature: Unknown problem: ${JSON.stringify(msgParams)}`))
@@ -431,24 +515,31 @@ module.exports = class MetamaskController extends EventEmitter {
     })
   }
 
-  signMessage (msgParams, cb) {
+  signPersonalMessage (msgParams) {
+    log.info('MetaMaskController - signPersonalMessage')
     const msgId = msgParams.metamaskId
-    promiseToCallback(
-      // sets the status op the message to 'approved'
-      // and removes the metamaskId for signing
-      this.messageManager.approveMessage(msgParams)
-      .then((cleanMsgParams) => {
-        // signs the message
-        return this.keyringController.signMessage(cleanMsgParams)
-      })
-      .then((rawSig) => {
-        // tells the listener that the message has been signed
-        // and can be returned to the dapp
-        this.messageManager.setMsgStatusSigned(msgId, rawSig)
-      })
-    )(cb)
+    // sets the status op the message to 'approved'
+    // and removes the metamaskId for signing
+    return this.personalMessageManager.approveMessage(msgParams)
+    .then((cleanMsgParams) => {
+      // signs the message
+      return this.keyringController.signPersonalMessage(cleanMsgParams)
+    })
+    .then((rawSig) => {
+      // tells the listener that the message has been signed
+      // and can be returned to the dapp
+      this.personalMessageManager.setMsgStatusSigned(msgId, rawSig)
+      return this.getState()
+    })
   }
 
+  cancelPersonalMessage(msgId, cb) {
+    const messageManager = this.personalMessageManager
+    messageManager.rejectMsg(msgId)
+    if (cb && typeof cb === 'function') {
+      cb(null, this.getState())
+    }
+  }
 
   markAccountsFound (cb) {
     this.configManager.setLostAccounts([])
@@ -562,15 +653,6 @@ module.exports = class MetamaskController extends EventEmitter {
     this.shapeshiftController.createShapeShiftTx(depositAddress, depositType)
   }
 
-  setGasMultiplier (gasMultiplier, cb) {
-    try {
-      this.txManager.setGasMultiplier(gasMultiplier)
-      cb()
-    } catch (err) {
-      cb(err)
-    }
-  }
-
   //
   // network
   //
@@ -580,10 +662,21 @@ module.exports = class MetamaskController extends EventEmitter {
     if (this.isNetworkLoading()) this.lookupNetwork()
   }
 
-  setRpcTarget (rpcTarget) {
-    this.configManager.setRpcTarget(rpcTarget)
+  setDefaultRpc () {
+    this.configManager.setRpcTarget('http://localhost:8545')
     extension.runtime.reload()
     this.lookupNetwork()
+    return Promise.resolve('http://localhost:8545')
+  }
+
+  setCustomRpc (rpcTarget, rpcList) {
+    this.configManager.setRpcTarget(rpcTarget)
+    return this.preferencesController.updateFrequentRpcList(rpcTarget)
+      .then(() => {
+        extension.runtime.reload()
+        this.lookupNetwork()
+        return Promise.resolve(rpcTarget)
+      })
   }
 
   setProviderType (type) {

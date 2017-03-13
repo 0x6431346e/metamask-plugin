@@ -90,8 +90,11 @@ var actions = {
   PREVIOUS_TX: 'PREV_TX',
   signMsg: signMsg,
   cancelMsg: cancelMsg,
+  signPersonalMsg,
+  cancelPersonalMsg,
   sendTx: sendTx,
   signTx: signTx,
+  updateAndApproveTx,
   cancelTx: cancelTx,
   completedTx: completedTx,
   txError: txError,
@@ -109,11 +112,13 @@ var actions = {
   // config screen
   SHOW_CONFIG_PAGE: 'SHOW_CONFIG_PAGE',
   SET_RPC_TARGET: 'SET_RPC_TARGET',
+  SET_DEFAULT_RPC_TARGET: 'SET_DEFAULT_RPC_TARGET',
   SET_PROVIDER_TYPE: 'SET_PROVIDER_TYPE',
   USE_ETHERSCAN_PROVIDER: 'USE_ETHERSCAN_PROVIDER',
   useEtherscanProvider: useEtherscanProvider,
   showConfigPage: showConfigPage,
   setRpcTarget: setRpcTarget,
+  setDefaultRpcTarget: setDefaultRpcTarget,
   setProviderType: setProviderType,
   // loading overlay
   SHOW_LOADING: 'SHOW_LOADING_INDICATION',
@@ -178,7 +183,7 @@ function tryUnlockMetamask (password) {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
     dispatch(actions.unlockInProgress())
-    if (global.METAMASK_DEBUG) console.log(`background.submitPassword`)
+    log.debug(`background.submitPassword`)
     background.submitPassword(password, (err) => {
       dispatch(actions.hideLoadingIndication())
       if (err) {
@@ -206,7 +211,7 @@ function transitionBackward () {
 function confirmSeedWords () {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
-    if (global.METAMASK_DEBUG) console.log(`background.clearSeedWordCache`)
+    log.debug(`background.clearSeedWordCache`)
     background.clearSeedWordCache((err, account) => {
       dispatch(actions.hideLoadingIndication())
       if (err) {
@@ -222,7 +227,7 @@ function confirmSeedWords () {
 function createNewVaultAndRestore (password, seed) {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
-    if (global.METAMASK_DEBUG) console.log(`background.createNewVaultAndRestore`)
+    log.debug(`background.createNewVaultAndRestore`)
     background.createNewVaultAndRestore(password, seed, (err) => {
       dispatch(actions.hideLoadingIndication())
       if (err) return dispatch(actions.displayWarning(err.message))
@@ -234,12 +239,12 @@ function createNewVaultAndRestore (password, seed) {
 function createNewVaultAndKeychain (password) {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
-    if (global.METAMASK_DEBUG) console.log(`background.createNewVaultAndKeychain`)
+    log.debug(`background.createNewVaultAndKeychain`)
     background.createNewVaultAndKeychain(password, (err) => {
       if (err) {
         return dispatch(actions.displayWarning(err.message))
       }
-      if (global.METAMASK_DEBUG) console.log(`background.placeSeedWords`)
+      log.debug(`background.placeSeedWords`)
       background.placeSeedWords((err) => {
         if (err) {
           return dispatch(actions.displayWarning(err.message))
@@ -260,10 +265,10 @@ function revealSeedConfirmation () {
 function requestRevealSeed (password) {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
-    if (global.METAMASK_DEBUG) console.log(`background.submitPassword`)
+    log.debug(`background.submitPassword`)
     background.submitPassword(password, (err) => {
       if (err) return dispatch(actions.displayWarning(err.message))
-      if (global.METAMASK_DEBUG) console.log(`background.placeSeedWords`)
+      log.debug(`background.placeSeedWords`)
       background.placeSeedWords((err) => {
         if (err) return dispatch(actions.displayWarning(err.message))
         dispatch(actions.hideLoadingIndication())
@@ -275,7 +280,7 @@ function requestRevealSeed (password) {
 function addNewKeyring (type, opts) {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
-    if (global.METAMASK_DEBUG) console.log(`background.addNewKeyring`)
+    log.debug(`background.addNewKeyring`)
     background.addNewKeyring(type, opts, (err) => {
       dispatch(actions.hideLoadingIndication())
       if (err) return dispatch(actions.displayWarning(err.message))
@@ -287,11 +292,11 @@ function addNewKeyring (type, opts) {
 function importNewAccount (strategy, args) {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication('This may take a while, be patient.'))
-    if (global.METAMASK_DEBUG) console.log(`background.importAccountWithStrategy`)
+    log.debug(`background.importAccountWithStrategy`)
     background.importAccountWithStrategy(strategy, args, (err) => {
       dispatch(actions.hideLoadingIndication())
       if (err) return dispatch(actions.displayWarning(err.message))
-      if (global.METAMASK_DEBUG) console.log(`background.getState`)
+      log.debug(`background.getState`)
       background.getState((err, newState) => {
         if (err) {
           return dispatch(actions.displayWarning(err.message))
@@ -313,7 +318,7 @@ function navigateToNewAccountScreen() {
 }
 
 function addNewAccount () {
-  if (global.METAMASK_DEBUG) console.log(`background.addNewAccount`)
+  log.debug(`background.addNewAccount`)
   return callBackgroundThenUpdate(background.addNewAccount)
 }
 
@@ -326,7 +331,7 @@ function showInfoPage () {
 function setCurrentFiat (currencyCode) {
   return (dispatch) => {
     dispatch(this.showLoadingIndication())
-    if (global.METAMASK_DEBUG) console.log(`background.setCurrentFiat`)
+    log.debug(`background.setCurrentFiat`)
     background.setCurrentCurrency(currencyCode, (err, data) => {
       dispatch(this.hideLoadingIndication())
       if (err) {
@@ -346,14 +351,38 @@ function setCurrentFiat (currencyCode) {
 }
 
 function signMsg (msgData) {
+  log.debug('action - signMsg')
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
 
-    if (global.METAMASK_DEBUG) console.log(`background.signMessage`)
-    background.signMessage(msgData, (err) => {
+    log.debug(`actions calling background.signMessage`)
+    background.signMessage(msgData, (err, newState) => {
+      log.debug('signMessage called back')
+      dispatch(actions.updateMetamaskState(newState))
       dispatch(actions.hideLoadingIndication())
 
+      if (err) log.error(err)
       if (err) return dispatch(actions.displayWarning(err.message))
+
+      dispatch(actions.completedTx(msgData.metamaskId))
+    })
+  }
+}
+
+function signPersonalMsg (msgData) {
+  log.debug('action - signPersonalMsg')
+  return (dispatch) => {
+    dispatch(actions.showLoadingIndication())
+
+    log.debug(`actions calling background.signPersonalMessage`)
+    background.signPersonalMessage(msgData, (err, newState) => {
+      log.debug('signPersonalMessage called back')
+      dispatch(actions.updateMetamaskState(newState))
+      dispatch(actions.hideLoadingIndication())
+
+      if (err) log.error(err)
+      if (err) return dispatch(actions.displayWarning(err.message))
+
       dispatch(actions.completedTx(msgData.metamaskId))
     })
   }
@@ -361,24 +390,35 @@ function signMsg (msgData) {
 
 function signTx (txData) {
   return (dispatch) => {
-    if (global.METAMASK_DEBUG) console.log(`background.setGasMultiplier`)
-    background.setGasMultiplier(txData.gasMultiplier, (err) => {
+    web3.eth.sendTransaction(txData, (err, data) => {
+      dispatch(actions.hideLoadingIndication())
       if (err) return dispatch(actions.displayWarning(err.message))
-      web3.eth.sendTransaction(txData, (err, data) => {
-        dispatch(actions.hideLoadingIndication())
-        if (err) return dispatch(actions.displayWarning(err.message))
-        dispatch(actions.hideWarning())
-        dispatch(actions.goHome())
-      })
-      dispatch(this.showConfTxPage())
+      dispatch(actions.hideWarning())
+      dispatch(actions.goHome())
     })
+    dispatch(this.showConfTxPage())
   }
 }
 
 function sendTx (txData) {
+  log.info(`actions - sendTx: ${JSON.stringify(txData.txParams)}`)
   return (dispatch) => {
-    if (global.METAMASK_DEBUG) console.log(`background.approveTransaction`)
+    log.debug(`actions calling background.approveTransaction`)
     background.approveTransaction(txData.id, (err) => {
+      if (err) {
+        dispatch(actions.txError(err))
+        return console.error(err.message)
+      }
+      dispatch(actions.completedTx(txData.id))
+    })
+  }
+}
+
+function updateAndApproveTx (txData) {
+  log.info('actions: updateAndApproveTx: ' + JSON.stringify(txData))
+  return (dispatch) => {
+    log.debug(`actions calling background.updateAndApproveTx`)
+    background.updateAndApproveTransaction(txData, (err) => {
       if (err) {
         dispatch(actions.txError(err))
         return console.error(err.message)
@@ -391,7 +431,7 @@ function sendTx (txData) {
 function completedTx (id) {
   return {
     type: actions.COMPLETED_TX,
-    id,
+    value: id,
   }
 }
 
@@ -403,13 +443,19 @@ function txError (err) {
 }
 
 function cancelMsg (msgData) {
-  if (global.METAMASK_DEBUG) console.log(`background.cancelMessage`)
+  log.debug(`background.cancelMessage`)
   background.cancelMessage(msgData.id)
   return actions.completedTx(msgData.id)
 }
 
+function cancelPersonalMsg (msgData) {
+  const id = msgData.id
+  background.cancelPersonalMessage(id)
+  return actions.completedTx(id)
+}
+
 function cancelTx (txData) {
-  if (global.METAMASK_DEBUG) console.log(`background.cancelTransaction`)
+  log.debug(`background.cancelTransaction`)
   background.cancelTransaction(txData.id)
   return actions.completedTx(txData.id)
 }
@@ -505,14 +551,14 @@ function updateMetamaskState (newState) {
 }
 
 function lockMetamask () {
-  if (global.METAMASK_DEBUG) console.log(`background.setLocked`)
+  log.debug(`background.setLocked`)
   return callBackgroundThenUpdate(background.setLocked)
 }
 
 function showAccountDetail (address) {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
-    if (global.METAMASK_DEBUG) console.log(`background.setSelectedAddress`)
+    log.debug(`background.setSelectedAddress`)
     background.setSelectedAddress(address, (err) => {
       dispatch(actions.hideLoadingIndication())
       if (err) {
@@ -585,7 +631,7 @@ function goBackToInitView () {
 function markNoticeRead (notice) {
   return (dispatch) => {
     dispatch(this.showLoadingIndication())
-    if (global.METAMASK_DEBUG) console.log(`background.markNoticeRead`)
+    log.debug(`background.markNoticeRead`)
     background.markNoticeRead(notice, (err, notice) => {
       dispatch(this.hideLoadingIndication())
       if (err) {
@@ -617,7 +663,7 @@ function clearNotices () {
 }
 
 function markAccountsFound() {
-  if (global.METAMASK_DEBUG) console.log(`background.markAccountsFound`)
+  log.debug(`background.markAccountsFound`)
   return callBackgroundThenUpdate(background.markAccountsFound)
 }
 
@@ -625,17 +671,33 @@ function markAccountsFound() {
 // config
 //
 
+// default rpc target refers to localhost:8545 in this instance.
+function setDefaultRpcTarget (rpcList) {
+  log.debug(`background.setDefaultRpcTarget`)
+  return (dispatch) => {
+    background.setDefaultRpc((err, result) => {
+      if (err) {
+        log.error(err)
+        return dispatch(self.displayWarning('Had a problem changing networks.'))
+      }
+    })
+  }
+}
+
 function setRpcTarget (newRpc) {
-  if (global.METAMASK_DEBUG) console.log(`background.setRpcTarget`)
-  background.setRpcTarget(newRpc)
-  return {
-    type: actions.SET_RPC_TARGET,
-    value: newRpc,
+  log.debug(`background.setRpcTarget`)
+  return (dispatch) => {
+    background.setCustomRpc(newRpc, (err, result) => {
+      if (err) {
+        log.error(err)
+        return dispatch(self.displayWarning('Had a problem changing networks!'))
+      }
+    })
   }
 }
 
 function setProviderType (type) {
-  if (global.METAMASK_DEBUG) console.log(`background.setProviderType`)
+  log.debug(`background.setProviderType`)
   background.setProviderType(type)
   return {
     type: actions.SET_PROVIDER_TYPE,
@@ -644,7 +706,7 @@ function setProviderType (type) {
 }
 
 function useEtherscanProvider () {
-  if (global.METAMASK_DEBUG) console.log(`background.useEtherscanProvider`)
+  log.debug(`background.useEtherscanProvider`)
   background.useEtherscanProvider()
   return {
     type: actions.USE_ETHERSCAN_PROVIDER,
@@ -701,12 +763,12 @@ function exportAccount (address) {
   return function (dispatch) {
     dispatch(self.showLoadingIndication())
 
-    if (global.METAMASK_DEBUG) console.log(`background.exportAccount`)
+    log.debug(`background.exportAccount`)
     background.exportAccount(address, function (err, result) {
       dispatch(self.hideLoadingIndication())
 
       if (err) {
-        console.error(err)
+        log.error(err)
         return dispatch(self.displayWarning('Had a problem exporting the account.'))
       }
 
@@ -725,7 +787,7 @@ function showPrivateKey (key) {
 function saveAccountLabel (account, label) {
   return (dispatch) => {
     dispatch(actions.showLoadingIndication())
-    if (global.METAMASK_DEBUG) console.log(`background.saveAccountLabel`)
+    log.debug(`background.saveAccountLabel`)
     background.saveAccountLabel(account, label, (err) => {
       dispatch(actions.hideLoadingIndication())
       if (err) {
@@ -747,7 +809,7 @@ function showSendPage () {
 
 function buyEth (address, amount) {
   return (dispatch) => {
-    if (global.METAMASK_DEBUG) console.log(`background.buyEth`)
+    log.debug(`background.buyEth`)
     background.buyEth(address, amount)
     dispatch({
       type: actions.BUY_ETH,
@@ -827,7 +889,7 @@ function coinShiftRquest (data, marketData) {
       if (response.error) return dispatch(actions.displayWarning(response.error))
       var message = `
         Deposit your ${response.depositType} to the address bellow:`
-      if (global.METAMASK_DEBUG) console.log(`background.createShapeShiftTx`)
+      log.debug(`background.createShapeShiftTx`)
       background.createShapeShiftTx(response.deposit, response.depositType)
       dispatch(actions.showQrView(response.deposit, [message].concat(marketData)))
     })
@@ -907,7 +969,7 @@ function callBackgroundThenUpdate (method, ...args) {
 }
 
 function forceUpdateMetamaskState(dispatch){
-  if (global.METAMASK_DEBUG) console.log(`background.getState`)
+  log.debug(`background.getState`)
   background.getState((err, newState) => {
     if (err) {
       return dispatch(actions.displayWarning(err.message))

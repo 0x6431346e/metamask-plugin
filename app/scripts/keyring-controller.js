@@ -5,10 +5,11 @@ const EventEmitter = require('events').EventEmitter
 const ObservableStore = require('obs-store')
 const filter = require('promise-filter')
 const encryptor = require('browser-passworder')
-const normalizeAddress = require('./lib/sig-util').normalize
+const sigUtil = require('eth-sig-util')
+const normalizeAddress = sigUtil.normalize
 // Keyrings:
-const SimpleKeyring = require('./keyrings/simple')
-const HdKeyring = require('./keyrings/hd')
+const SimpleKeyring = require('eth-simple-keyring')
+const HdKeyring = require('eth-hd-keyring')
 const keyringTypes = [
   SimpleKeyring,
   HdKeyring,
@@ -163,8 +164,11 @@ class KeyringController extends EventEmitter {
       return keyring.getAccounts()
     })
     .then((accounts) => {
+      return this.checkForDuplicate(type, accounts)
+    })
+    .then((checkedAccounts) => {
       this.keyrings.push(keyring)
-      return this.setupAccounts(accounts)
+      return this.setupAccounts(checkedAccounts)
     })
     .then(() => this.persistAllKeyrings())
     .then(() => this.fullUpdate())
@@ -173,6 +177,24 @@ class KeyringController extends EventEmitter {
       return keyring
     })
   }
+
+  // For now just checks for simple key pairs
+  // but in the future
+  // should possibly add HD and other types
+  //
+  checkForDuplicate (type, newAccount) {
+    return this.getAccounts()
+    .then((accounts) => {
+      switch (type) {
+        case 'Simple Key Pair':
+          let isNotIncluded = !accounts.find((key) => key === newAccount[0] || key === ethUtil.stripHexPrefix(newAccount[0]))
+          return (isNotIncluded) ? Promise.resolve(newAccount) : Promise.reject(new Error('The account you\'re are trying to import is a duplicate'))
+        default:
+          return Promise.resolve(newAccount)
+      }
+    })
+  }
+
 
   // Add New Account
   // @number keyRingNum
@@ -259,6 +281,21 @@ class KeyringController extends EventEmitter {
     return this.getKeyringForAccount(address)
     .then((keyring) => {
       return keyring.signMessage(address, msgParams.data)
+    })
+  }
+
+  // Sign Personal Message
+  // @object msgParams
+  //
+  // returns Promise(@buffer rawSig)
+  //
+  // Attempts to sign the provided @object msgParams.
+  // Prefixes the hash before signing as per the new geth behavior.
+  signPersonalMessage (msgParams) {
+    const address = normalizeAddress(msgParams.from)
+    return this.getKeyringForAccount(address)
+    .then((keyring) => {
+      return keyring.signPersonalMessage(address, msgParams.data)
     })
   }
 
@@ -471,6 +508,7 @@ class KeyringController extends EventEmitter {
   // the specified `address` if one exists.
   getKeyringForAccount (address) {
     const hexed = normalizeAddress(address)
+    log.debug(`KeyringController - getKeyringForAccount: ${hexed}`)
 
     return Promise.all(this.keyrings.map((keyring) => {
       return Promise.all([
