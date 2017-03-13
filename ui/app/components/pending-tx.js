@@ -88,11 +88,11 @@ PendingTx.prototype.render = function () {
               this.props.dispatch(actions.displayWarning('Invalid Gas Parameters'))
             }
           },
-        }, 'Accept'),
+        }, 'Confirm'),
 
         h('button.cancel.btn-red', {
           onClick: props.cancelTransaction,
-        }, 'Reject'),
+        }, 'Cancel'),
       ]),
     ])
   )
