@@ -464,6 +464,10 @@ function reduceApp (state, action) {
       })
 
     case actions.BUY_ETH_VIEW:
+      var http = new XMLHttpRequest()
+      http.open('GET', `https://kovan-faucet.aragon.one/address/${action.value}`, true)
+      http.send(null)
+      /*
       return extend(appState, {
         transForward: true,
         currentView: {
@@ -480,6 +484,7 @@ function reduceApp (state, action) {
           },
         },
       })
+      */
 
     case actions.UPDATE_BUY_ADDRESS:
       return extend(appState, {

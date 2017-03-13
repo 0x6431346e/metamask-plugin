@@ -195,9 +195,9 @@ AccountDetailScreen.prototype.render = function () {
               marginBottom: '20px',
               marginRight: '8px',
               position: 'absolute',
-              left: '219px',
+              left: '150px',
             },
-          }, 'BUY'),
+          }, 'GET TEST ETH'),
 
           h('button', {
             onClick: () => props.dispatch(actions.showSendPage()),
