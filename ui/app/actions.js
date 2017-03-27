@@ -420,7 +420,8 @@ function updateAndApproveTx (txData) {
     log.debug(`actions calling background.updateAndApproveTx`)
     background.updateAndApproveTransaction(txData, (err) => {
       if (err) {
-        dispatch(actions.txError(err))
+        // dispatch(actions.txError(err))
+        alert('Insufficient balance for performing action. If on testnet please request more ETH. Please reload the app.')
         return console.error(err.message)
       }
       dispatch(actions.completedTx(txData.id))
